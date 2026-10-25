@@ -1,0 +1,11 @@
+# 忽略 Tauri 编译产生的巨大缓存文件夹
+/src-tauri/target/
+
+# 忽略 Node.js 依赖和系统文件
+/node_modules/
+.DS_Store
+Thumbs.db
+
+# 忽略 VSCode 等编辑器配置
+.vscode/
+.idea/

@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>Markdown Looker</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --tab-bg: #0d1117;
+      --tab-active-bg: #161b22;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    ::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--panel);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #484f58;
+      border-radius: 6px;
+      border: 3px solid var(--panel);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #6e7681;
+    }
+
+    ::-webkit-scrollbar-corner {
+      background: var(--panel);
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #484f58 var(--panel);
+    }
+
+    #top-bar {
+      height: 40px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      z-index: 100;
+      flex-shrink: 0;
+    }
+
+    #menu-container {
+      position: relative;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      border-right: 1px solid var(--border);
+      padding-right: 4px;
+    }
+
+    #menu-btn {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 20px;
+      padding: 4px 16px;
+      cursor: pointer;
+      height: 100%;
+      transition: background 0.15s;
+    }
+
+    #menu-btn:hover {
+      background: var(--border);
+    }
+
+    #dropdown-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 0 0 6px 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+      min-width: 180px;
+      flex-direction: column;
+      padding: 4px 0;
+    }
+
+    #menu-container:hover #dropdown-menu {
+      display: flex;
+    }
+
+    #dropdown-menu button {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      padding: 8px 16px;
+      text-align: left;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    #dropdown-menu button:hover {
+      background: var(--border);
+    }
+
+    .shortcut {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 20px;
+    }
+
+    #tabs-container {
+      flex: 1;
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      height: 100%;
+    }
+
+    #tabs-container::-webkit-scrollbar {
+      height: 4px;
+    }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      min-width: 120px;
+      max-width: 200px;
+      border-right: 1px solid var(--border);
+      background: var(--tab-bg);
+      color: var(--muted);
+      cursor: pointer;
+      position: relative;
+      transition: background 0.15s;
+    }
+
+    .tab:hover {
+      background: #1c2128;
+    }
+
+    .tab.active {
+      background: var(--tab-active-bg);
+      color: var(--text);
+      border-top: 2px solid var(--accent);
+    }
+
+    .tab-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 13px;
+    }
+
+    .tab-close {
+      margin-left: 8px;
+      color: var(--muted);
+      font-size: 16px;
+      border-radius: 3px;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tab-close:hover {
+      background: #30363d;
+      color: #f85149;
+    }
+
+    .tab-dirty-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      margin-left: 6px;
+      display: none;
+    }
+
+    .tab.dirty .tab-dirty-dot {
+      display: block;
+    }
+
+    #main-content {
+      flex: 1;
+      display: flex;
+      height: calc(100vh - 40px);
+    }
+
+    #editor {
+      width: 50%;
+      height: 100%;
+      padding: 24px;
+      border: none;
+      border-right: 1px solid var(--border);
+      background: var(--tab-active-bg);
+      color: var(--text);
+      font: 14px/1.6 "SFMono-Regular", Consolas, monospace;
+      resize: none;
+      outline: none;
+      tab-size: 4;
+    }
+
+    #preview-wrap {
+      flex: 1;
+      height: 100%;
+      background: var(--bg);
+    }
+
+    #preview {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #modal-overlay.show {
+      display: flex;
+    }
+
+    #modal-dialog {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 400px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+    }
+
+    #modal-dialog h3 {
+      margin-top: 0;
+      color: var(--text);
+    }
+
+    #modal-dialog p {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    #modal-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    #modal-buttons button {
+      padding: 6px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    #modal-buttons button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    #modal-buttons button:hover {
+      opacity: 0.8;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- 顶部工具栏 -->
+  <header id="top-bar">
+    <div id="menu-container">
+      <button id="menu-btn">☰</button>
+      <div id="dropdown-menu">
+        <button id="menu-open">打开文件 <span class="shortcut">Ctrl+O</span></button>
+        <button id="menu-save">保存 <span class="shortcut">Ctrl+S</span></button>
+        <button id="menu-save-as">另存为 <span class="shortcut">Ctrl+Shift+S</span></button>
+      </div>
+    </div>
+    <div id="tabs-container"></div>
+  </header>
+
+  <!-- 主体分栏 -->
+  <main id="main-content">
+    <textarea id="editor" placeholder="在这里写 Markdown……" spellcheck="false"></textarea>
+    <div id="preview-wrap">
+      <iframe id="preview" sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts"></iframe>
+    </div>
+  </main>
+
+  <input type="file" id="fallbackInput" accept=".md,.markdown,.mdx,.txt" hidden>
+
+  <!-- 自定义保存提示弹窗 -->
+  <div id="modal-overlay">
+    <div id="modal-dialog">
+      <h3>未保存的更改</h3>
+      <p id="modal-text">该文件有未保存的更改，确定要关闭吗？</p>
+      <div id="modal-buttons">
+        <button id="modal-cancel">取消</button>
+        <button id="modal-confirm" class="primary">不保存并关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { markdownToHTML } from "./comrak/index.js";
+
+    /* ================= GitHub 深色预览样式 ================= */
+    const GITHUB_CSS = `
+      ::-webkit-scrollbar { width: 12px; height: 12px; }
+      ::-webkit-scrollbar-track { background: #0d1117; }
+      ::-webkit-scrollbar-thumb { background: #484f58; border-radius: 6px; border: 3px solid #0d1117; }
+      ::-webkit-scrollbar-thumb:hover { background: #6e7681; }
+      ::-webkit-scrollbar-corner { background: #0d1117; }
+      * { scrollbar-width: thin; scrollbar-color: #484f58 #0d1117; }
+      html { background: #0d1117; height: 100%; }
+      body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.5; word-wrap: break-word; padding: 32px 40px; max-width: 980px; margin: 0 auto; min-height: 100%; }
+      a { color: #58a6ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      h1, h2 { border-bottom: 1px solid #30363d; padding-bottom: .3em; }
+      h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }
+      code { background: rgba(110,118,129,.4); padding: .2em .4em; border-radius: 6px; font-size: 85%; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+      pre { background: #161b22 !important; padding: 16px; border-radius: 6px; overflow: auto; border: 1px solid #30363d; }
+      pre code { background: transparent; padding: 0; font-size: 100%; color: #e6edf3; }
+      blockquote { margin: 0; padding: 0 1em; color: #8b949e; border-left: .25em solid #30363d; }
+      table { border-collapse: collapse; margin: 16px 0; width: auto; }
+      th, td { border: 1px solid #30363d; padding: 6px 13px; }
+      th { background: #161b22; font-weight: 600; }
+      tr:nth-child(2n) { background: #0d1117; }
+      details { margin: 16px 0; padding: 8px 12px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; }
+      summary { cursor: pointer; font-weight: 600; }
+      img { max-width: 100%; }
+      ul, ol { padding-left: 2em; }
+      hr { height: .25em; padding: 0; margin: 24px 0; background: #30363d; border: 0; }
+      .task-list-item { list-style-type: none; }
+      .task-list-item input { margin: 0 .2em .25em -1.4em; vertical-align: middle; }
+      .markdown-alert { padding: 0.5rem 1rem; margin-bottom: 16px; color: inherit; border-left: .25em solid #30363d; border-radius: 4px; }
+      .markdown-alert > :first-child { margin-top: 0; }
+      .markdown-alert > :last-child { margin-bottom: 0; }
+      .markdown-alert .markdown-alert-title { display: flex; font-weight: 500; align-items: center; margin-bottom: 4px; margin-top: 0; }
+      .markdown-alert-note { border-left-color: #1f6feb; }
+      .markdown-alert-note .markdown-alert-title { color: #2f81f7; }
+      .markdown-alert-tip { border-left-color: #238636; }
+      .markdown-alert-tip .markdown-alert-title { color: #3fb950; }
+      .markdown-alert-important { border-left-color: #8957e5; }
+      .markdown-alert-important .markdown-alert-title { color: #a371f7; }
+      .markdown-alert-warning { border-left-color: #9e6a03; }
+      .markdown-alert-warning .markdown-alert-title { color: #d29922; }
+      .markdown-alert-caution { border-left-color: #da3633; }
+      .markdown-alert-caution .markdown-alert-title { color: #f85149; }
+    `;
+
+    /* ================= DOM 引用 ================= */
+    const editor = document.querySelector("#editor");
+    const preview = document.querySelector("#preview");
+    const tabsContainer = document.querySelector("#tabs-container");
+    const fallbackInput = document.querySelector("#fallbackInput");
+    const menuOpen = document.querySelector("#menu-open");
+    const menuSave = document.querySelector("#menu-save");
+    const menuSaveAs = document.querySelector("#menu-save-as");
+
+    const isTauri = window.__TAURI_INTERNALS__ !== undefined || window.__TAURI__ !== undefined;
+
+    /* ================= 增量渲染引擎 ================= */
+    // iframe 骨架只在启动时建立一次；之后每次渲染仅通过 postMessage 替换 body
+    let previewReady = false;
+    let pendingHtml = null;
+
+    function ensurePreviewShell() {
+      if (previewReady) return;
+      preview.onload = () => {
+        previewReady = true;
+        if (pendingHtml !== null) {
+          const h = pendingHtml;
+          pendingHtml = null;
+          postRender(h);
+        }
+      };
+      preview.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>${GITHUB_CSS}</style></head><body>
+<script>
+  let isSyncing = false, rightRaf = false;
+  function getMax() { return document.documentElement.scrollHeight - window.innerHeight; }
+
+  window.addEventListener("message", (e) => {
+    const d = e.data;
+    if (!d) return;
+
+    if (d.type === "render") {
+      // 增量更新：保留 <details> 展开状态 -> 替换 body -> 恢复滚动
+      isSyncing = true;
+      const openSet = new Set();
+      document.querySelectorAll("details").forEach((el, i) => { if (el.open) openSet.add(i); });
+
+      document.body.innerHTML = d.html;
+
+      document.querySelectorAll("details").forEach((el, i) => { if (openSet.has(i)) el.open = true; });
+
+      requestAnimationFrame(() => {
+        const max = getMax();
+        if (max > 0) window.scrollTo(0, d.ratio * max);
+        requestAnimationFrame(() => { isSyncing = false; });
+      });
+
+    } else if (d.type === "sync-scroll" && !isSyncing) {
+      // 来自编辑器滚动
+      isSyncing = true;
+      const max = getMax();
+      if (max > 0) window.scrollTo(0, d.ratio * max);
+      requestAnimationFrame(() => { isSyncing = false; });
+    }
+  });
+
+  window.addEventListener("scroll", () => {
+    if (isSyncing || rightRaf) return;
+    rightRaf = true;
+    requestAnimationFrame(() => {
+      const max = getMax();
+      if (max > 0) window.parent.postMessage({ type: "sync-scroll-back", ratio: window.scrollY / max }, "*");
+      rightRaf = false;
+    });
+  });
+<\/script></body></html>`;
+    }
+
+    function postRender(html) {
+      if (!previewReady) {
+        pendingHtml = html;
+        ensurePreviewShell();
+        return;
+      }
+      const editorMax = editor.scrollHeight - editor.clientHeight;
+      const ratio = editorMax > 0 ? editor.scrollTop / editorMax : 0;
+      try {
+        preview.contentWindow.postMessage({ type: "render", html, ratio }, "*");
+      } catch (e) { /* ignore */ }
+    }
+
+    function renderPreview() {
+      const md = editor.value;
+      let html;
+      try {
+        html = markdownToHTML(md, {
+          extension: { table: true, tasklist: true, strikethrough: true, autolink: true, alerts: true },
+          render: { unsafe: true, githubPreLang: true, hardbreaks: true },
+        });
+        const alertRegex = /<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([\s\S]*?)<\/p>([\s\S]*?)<\/blockquote>/gi;
+        html = html.replace(alertRegex, (match, type, firstLine, rest) => {
+          const lowerType = type.toLowerCase();
+          const title = type.charAt(0) + type.slice(1).toLowerCase();
+          const content = firstLine.trim() ? `<p>${firstLine.trim()}</p>` : '';
+          return `<div class="markdown-alert markdown-alert-${lowerType}"><p class="markdown-alert-title">${title}</p>${content}${rest}</div>`;
+        });
+      } catch (e) {
+        html = `<pre style="color:#f85149">渲染出错：${e.message}</pre>`;
+      }
+      postRender(html);
+    }
+
+    /* ================= 标签页状态管理 ================= */
+    let tabs = [];
+    let activeTabId = null;
+    let tabCounter = 0;
+
+    function createTab(filePath = null, content = "") {
+      tabCounter++;
+      const id = "tab_" + Date.now() + "_" + tabCounter;
+      const name = filePath ? filePath.split('\\').pop().split('/').pop() : "未命名 " + tabCounter + ".md";
+
+      const newTab = { id, name, path: filePath, content, isDirty: false, scrollTop: 0 };
+
+      tabs.push(newTab);
+      switchTab(id);
+      renderTabsUI();
+    }
+
+    function switchTab(id) {
+      if (activeTabId) {
+        const current = tabs.find(t => t.id === activeTabId);
+        if (current) {
+          current.content = editor.value;
+          current.scrollTop = editor.scrollTop;
+        }
+      }
+
+      activeTabId = id;
+      const activeTab = tabs.find(t => t.id === id);
+      if (activeTab) {
+        editor.value = activeTab.content;
+        renderTabsUI();
+        renderPreview();
+        requestAnimationFrame(() => { editor.scrollTop = activeTab.scrollTop; });
+      }
+    }
+
+    function renderTabsUI() {
+      tabsContainer.innerHTML = "";
+      tabs.forEach(tab => {
+        const el = document.createElement("div");
+        el.className = `tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isDirty ? 'dirty' : ''}`;
+        el.title = tab.path || tab.name;
+        el.onclick = (e) => {
+          if (e.target.classList.contains('tab-close')) return;
+          if (tab.id !== activeTabId) switchTab(tab.id);
+        };
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "tab-name";
+        nameSpan.textContent = tab.name;
+
+        const dirtyDot = document.createElement("span");
+        dirtyDot.className = "tab-dirty-dot";
+
+        const closeBtn = document.createElement("span");
+        closeBtn.className = "tab-close";
+        closeBtn.innerHTML = "×";
+        closeBtn.onclick = (e) => {
+          e.stopPropagation();
+          tryCloseTab(tab.id);
+        };
+
+        el.appendChild(nameSpan);
+        el.appendChild(dirtyDot);
+        el.appendChild(closeBtn);
+        tabsContainer.appendChild(el);
+      });
+    }
+
+    let pendingCloseTabId = null;
+    const modalOverlay = document.querySelector("#modal-overlay");
+    const modalConfirm = document.querySelector("#modal-confirm");
+    const modalCancel = document.querySelector("#modal-cancel");
+
+    function tryCloseTab(id) {
+      const tab = tabs.find(t => t.id === id);
+      if (!tab) return;
+
+      if (tab.isDirty) {
+        pendingCloseTabId = id;
+        document.querySelector("#modal-text").textContent = `"${tab.name}" 有未保存的更改，确定要关闭吗？`;
+        modalOverlay.classList.add("show");
+      } else {
+        forceCloseTab(id);
+      }
+    }
+
+    function forceCloseTab(id) {
+      const idx = tabs.findIndex(t => t.id === id);
+      if (idx === -1) return;
+
+      tabs.splice(idx, 1);
+
+      if (tabs.length === 0) {
+        createTab();
+      } else if (activeTabId === id) {
+        const nextIdx = Math.max(0, idx - 1);
+        switchTab(tabs[nextIdx].id);
+      } else {
+        renderTabsUI();
+      }
+    }
+
+    modalCancel.onclick = () => { modalOverlay.classList.remove("show"); pendingCloseTabId = null; };
+    modalConfirm.onclick = () => {
+      if (pendingCloseTabId) forceCloseTab(pendingCloseTabId);
+      modalOverlay.classList.remove("show");
+      pendingCloseTabId = null;
+    };
+
+    /* ================= 交互事件与同步 ================= */
+    let renderTimer;
+    editor.addEventListener("input", () => {
+      const activeTab = tabs.find(t => t.id === activeTabId);
+      if (activeTab && !activeTab.isDirty) {
+        activeTab.isDirty = true;
+        renderTabsUI();
+      }
+
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(renderPreview, 150);
+    });
+
+    // 左侧 -> 右侧滚动同步
+    let isSyncingLeft = false, isSyncingRight = false, leftRaf = false;
+    editor.addEventListener("scroll", () => {
+      if (isSyncingLeft || leftRaf) return;
+      leftRaf = true;
+      requestAnimationFrame(() => {
+        const max = editor.scrollHeight - editor.clientHeight;
+        if (preview.contentWindow) {
+          preview.contentWindow.postMessage({ type: "sync-scroll", ratio: max <= 0 ? 0 : editor.scrollTop / max }, "*");
+        }
+        leftRaf = false;
+      });
+    });
+
+    // 右侧 -> 左侧滚动同步
+    window.addEventListener("message", (e) => {
+      if (e.data && e.data.type === "sync-scroll-back") {
+        if (isSyncingRight) return;
+        isSyncingLeft = true;
+        const max = editor.scrollHeight - editor.clientHeight;
+        const target = e.data.ratio * max;
+        if (Math.abs(editor.scrollTop - target) > 1) editor.scrollTop = target;
+        requestAnimationFrame(() => { isSyncingLeft = false; });
+      }
+    });
+
+    /* ================= 文件操作 ================= */
+    async function handleOpen() {
+      if (window.showOpenFilePicker) {
+        try {
+          const [handle] = await window.showOpenFilePicker({
+            types: [{ description: "Markdown", accept: { "text/markdown": [".md", ".markdown", ".mdx", ".txt"] } }],
+            multiple: false,
+          });
+          const file = await handle.getFile();
+          const text = await file.text();
+
+          const existing = tabs.find(t => t.path === file.name);
+          if (existing) { switchTab(existing.id); return; }
+
+          createTab(file.name, text);
+          const activeTab = tabs.find(t => t.id === activeTabId);
+          activeTab.path = file.name;
+          activeTab.name = file.name;
+          activeTab.webHandle = handle;
+          renderTabsUI();
+          return;
+        } catch (e) { if (e.name === "AbortError") return; }
+      }
+      fallbackInput.click();
+    }
+
+    fallbackInput.addEventListener("change", async () => {
+      const file = fallbackInput.files[0];
+      if (!file) return;
+      const text = await file.text();
+      createTab(file.name, text);
+    });
+
+    async function handleSave() {
+      const activeTab = tabs.find(t => t.id === activeTabId);
+      if (!activeTab) return;
+
+      activeTab.content = editor.value;
+
+      if (isTauri && activeTab.path) {
+        try {
+          const { invoke } = window.__TAURI__.core;
+          await invoke('save_file', { path: activeTab.path, content: activeTab.content });
+          activeTab.isDirty = false;
+          renderTabsUI();
+        } catch (err) { alert("保存失败: " + err); }
+      } else if (activeTab.webHandle) {
+        try {
+          const writable = await activeTab.webHandle.createWritable();
+          await writable.write(activeTab.content);
+          await writable.close();
+          activeTab.isDirty = false;
+          renderTabsUI();
+        } catch (e) { alert("保存失败：" + e.message); }
+      } else {
+        handleSaveAs();
+      }
+    }
+
+    async function handleSaveAs() {
+      const activeTab = tabs.find(t => t.id === activeTabId);
+      if (!activeTab) return;
+      const content = editor.value;
+      const defaultName = activeTab.name;
+
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            types: [{ description: "Markdown", accept: { "text/markdown": [".md", ".markdown", ".txt"] } }],
+            suggestedName: defaultName
+          });
+          const writable = await handle.createWritable();
+          await writable.write(content);
+          await writable.close();
+
+          activeTab.webHandle = handle;
+          activeTab.name = handle.name;
+          activeTab.isDirty = false;
+          if (!isTauri) activeTab.path = handle.name;
+          renderTabsUI();
+        } catch (e) { if (e.name !== "AbortError") alert(e.message); }
+      } else {
+        const blob = new Blob([content], { type: "text/markdown" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = defaultName;
+        a.click();
+      }
+    }
+
+    /* ================= 初始化 ================= */
+    async function init() {
+      if (isTauri) {
+        try {
+          const { invoke } = window.__TAURI__.core;
+          const { listen } = window.__TAURI__.event;
+          await listen('new-file-opened', async (event) => {
+            const path = event.payload;
+            const fileData = await invoke('read_file', { path });
+            if (fileData) {
+              const existing = tabs.find(t => t.path === path);
+              if (existing) { switchTab(existing.id); return; }
+              createTab(fileData.path, fileData.content);
+            }
+          });
+
+          const fileData = await invoke('get_initial_file');
+          if (fileData && fileData.content) {
+            createTab(fileData.path, fileData.content);
+            return;
+          }
+        } catch (e) { console.error(e); }
+      }
+
+      if (tabs.length === 0) {
+        createTab(null, "# 欢迎使用 Markdown Looker\n\n请点击左上角打开文件，或双击文件使用本程序打开。");
+      }
+    }
+
+    menuOpen.addEventListener("click", handleOpen);
+    menuSave.addEventListener("click", handleSave);
+    menuSaveAs.addEventListener("click", handleSaveAs);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key.toLowerCase() === "o") { e.preventDefault(); handleOpen(); }
+        else if (e.key.toLowerCase() === "s") {
+          e.preventDefault();
+          if (e.shiftKey) handleSaveAs();
+          else handleSave();
+        }
+      }
+    });
+
+    init();
+  </script>
+</body>
+
+</html>

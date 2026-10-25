@@ -1,0 +1,65 @@
+{
+  "name": "comrak",
+  "version": "0.4.1",
+  "license": "MIT",
+  "author": {
+    "name": "Nicholas Berlette",
+    "email": "nick@berlette.com",
+    "url": "https://github.com/nberlette"
+  },
+  "types": "./index.d.ts",
+  "main": "./index.js",
+  "module": "./index.js",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nberlette/comrak-wasm.git",
+    "directory": "npm"
+  },
+  "homepage": "https://jsr.io/@nick/comrak",
+  "readme": "https://github.com/nberlette/comrak-wasm#readme",
+  "bugs": {
+    "url": "https://github.com/nberlette/comrak-wasm/issues"
+  },
+  "contributors": [
+    {
+      "name": "Nicholas Berlette",
+      "email": "nick@berlette.com",
+      "url": "https://github.com/nberlette"
+    },
+    {
+      "name": "Luca Casonato",
+      "email": "hello@lcas.dev",
+      "url": "https://github.com/lucacasonato"
+    }
+  ],
+  "keywords": [
+    "markdown",
+    "comrak",
+    "wasm",
+    "webassembly",
+    "deno",
+    "node",
+    "bun",
+    "browsers",
+    "rust",
+    "typescript",
+    "markdown-to-html",
+    "markdown-parser",
+    "markdown-renderer",
+    "markdown-converter",
+    "commonmark",
+    "gfm",
+    "github-flavored-markdown",
+    "markdown-it",
+    "remark"
+  ],
+  "description": "TypeScript and WebAssembly bindings for comrak, a blazing fast CommonMark and GFM compatible Markdown-to-HTML tool written in Rust.",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  }
+}
