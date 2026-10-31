@@ -102,7 +102,7 @@
       border: 1px solid var(--border);
       border-radius: 0 0 6px 6px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
-      min-width: 180px;
+      min-width: 200px;
       flex-direction: column;
       padding: 4px 0;
     }
@@ -314,6 +314,8 @@
         <button id="menu-open">打开文件 <span class="shortcut">Ctrl+O</span></button>
         <button id="menu-save">保存 <span class="shortcut">Ctrl+S</span></button>
         <button id="menu-save-as">另存为 <span class="shortcut">Ctrl+Shift+S</span></button>
+        <hr style="border:0; border-top:1px solid var(--border); margin:4px 0;">
+        <button id="menu-theme">切换主题 <span class="shortcut" id="theme-label">深色</span></button>
       </div>
     </div>
     <div id="tabs-container"></div>
@@ -344,49 +346,159 @@
   <script type="module">
     import { markdownToHTML } from "./comrak/index.js";
 
-    /* ================= GitHub 深色预览样式 ================= */
+    /* ================= 1. 定义主题字典 ================= */
+    const THEMES = {
+      dark: {
+        '--color-bg': '#0d1117',
+        '--color-text': '#e6edf3',
+        '--color-muted': '#8b949e',
+        '--color-border': '#30363d',
+        '--color-border-heavy': '#B7BDC8',
+        '--color-link': '#58a6ff',
+        '--color-code-bg': '#161b22',
+        '--color-table-head': '#010409',
+        '--color-table-odd': '#010409',
+        '--color-table-even': '#151B23',
+        '--color-hr': '#010409',
+        '--color-alert-note': '#409EFF',
+        '--color-alert-tip': '#409EFF',
+        '--color-alert-important': '#B87FFF',
+        '--color-alert-warning': '#E09B13',
+        '--color-alert-caution': '#FF6A69',
+        '--color-scroll-track': '#0d1117',
+        '--color-scroll-thumb': '#484f58',
+        '--color-scroll-thumb-hover': '#6e7681'
+      },
+      light: {
+        '--color-bg': '#ffffff',
+        '--color-text': '#1f2328',
+        '--color-muted': '#656d76',
+        '--color-border': '#d0d7de',
+        '--color-border-heavy': '#d0d7de',
+        '--color-link': '#0969da',
+        '--color-code-bg': '#f6f8fa',
+        '--color-table-head': '#f6f8fa',
+        '--color-table-odd': '#f6f8fa',
+        '--color-table-even': '#ffffff',
+        '--color-hr': '#d0d7de',
+        '--color-alert-note': '#0969da',
+        '--color-alert-tip': '#1a7f37',
+        '--color-alert-important': '#8250df',
+        '--color-alert-warning': '#9a6700',
+        '--color-alert-caution': '#cf222e',
+        '--color-scroll-track': '#ffffff',
+        '--color-scroll-thumb': '#d0d7de',
+        '--color-scroll-thumb-hover': '#afb8c1'
+      }
+    };
+
+    let currentTheme = 'dark';
+
+    /* ================= 2. 定义使用变量的 CSS 骨架 ================= */
     const GITHUB_CSS = `
       ::-webkit-scrollbar { width: 12px; height: 12px; }
-      ::-webkit-scrollbar-track { background: #0d1117; }
-      ::-webkit-scrollbar-thumb { background: #484f58; border-radius: 6px; border: 3px solid #0d1117; }
-      ::-webkit-scrollbar-thumb:hover { background: #6e7681; }
-      ::-webkit-scrollbar-corner { background: #0d1117; }
-      * { scrollbar-width: thin; scrollbar-color: #484f58 #0d1117; }
-      html { background: #0d1117; height: 100%; }
-      body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.5; word-wrap: break-word; padding: 32px 40px; max-width: 980px; margin: 0 auto; min-height: 100%; }
-      a { color: #58a6ff; text-decoration: none; }
-      a:hover { text-decoration: underline; }
-      h1, h2 { border-bottom: 1px solid #30363d; padding-bottom: .3em; }
+      ::-webkit-scrollbar-track { background: var(--color-scroll-track); }
+      ::-webkit-scrollbar-thumb { background: var(--color-scroll-thumb); border-radius: 6px; border: 3px solid var(--color-scroll-track); }
+      ::-webkit-scrollbar-thumb:hover { background: var(--color-scroll-thumb-hover); }
+      ::-webkit-scrollbar-corner { background: var(--color-scroll-track); }
+      * { scrollbar-width: thin; scrollbar-color: var(--color-scroll-thumb) var(--color-scroll-track); }
+      html { background: var(--color-bg); height: 100%; }
+      body { background: var(--color-bg); color: var(--color-text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.5; word-wrap: break-word; padding: 32px 40px; max-width: 980px; margin: 0 auto; min-height: 100%; }
+      
+      a { color: var(--color-link); text-decoration: underline; text-underline-offset: 0.2em; }
+      a:hover { opacity: 0.8; }
+
+      h1, h2 { border-bottom: 1px solid var(--color-border-heavy); padding-bottom: .3em; }
       h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }
+      
       code { background: rgba(110,118,129,.4); padding: .2em .4em; border-radius: 6px; font-size: 85%; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
-      pre { background: #161b22 !important; padding: 16px; border-radius: 6px; overflow: auto; border: 1px solid #30363d; }
-      pre code { background: transparent; padding: 0; font-size: 100%; color: #e6edf3; }
-      blockquote { margin: 0; padding: 0 1em; color: #8b949e; border-left: .25em solid #30363d; }
+      pre { background: var(--color-code-bg) !important; padding: 16px; border-radius: 6px; overflow: auto; border: 1px solid var(--color-border); margin-bottom: 16px; }
+      pre code { background: transparent; padding: 0; font-size: 100%; color: var(--color-text); }
+
+      blockquote { margin: 0; padding: 0 1em; color: var(--color-muted); border-left: .25em solid var(--color-border); }
+      
       table { border-collapse: collapse; margin: 16px 0; width: auto; }
-      th, td { border: 1px solid #30363d; padding: 6px 13px; }
-      th { background: #161b22; font-weight: 600; }
-      tr:nth-child(2n) { background: #0d1117; }
-      details { margin: 16px 0; padding: 8px 12px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; }
-      summary { cursor: pointer; font-weight: 600; }
+      th, td { border: 1px solid var(--color-border-heavy); padding: 6px 13px; }
+      th { background-color: var(--color-table-head); font-weight: 600; }
+      tbody tr:nth-child(odd) { background-color: var(--color-table-odd); }
+      tbody tr:nth-child(even) { background-color: var(--color-table-even); }
+      table > tr:nth-child(odd) { background-color: var(--color-table-odd); }
+      table > tr:nth-child(even) { background-color: var(--color-table-even); }
+      
+      details { margin: 16px 0; }
+      summary { cursor: pointer; font-weight: 600; outline: none; }
+      summary:hover { color: var(--color-link); }
+
       img { max-width: 100%; }
       ul, ol { padding-left: 2em; }
-      hr { height: .25em; padding: 0; margin: 24px 0; background: #30363d; border: 0; }
+      
+      hr { height: 2px; padding: 0; margin: 24px 0; background: var(--color-hr); border: 0; }
+      
       .task-list-item { list-style-type: none; }
       .task-list-item input { margin: 0 .2em .25em -1.4em; vertical-align: middle; }
-      .markdown-alert { padding: 0.5rem 1rem; margin-bottom: 16px; color: inherit; border-left: .25em solid #30363d; border-radius: 4px; }
+      
+      .markdown-alert { padding: 0.5rem 1rem; margin-bottom: 16px; color: inherit; border-left: .25em solid var(--color-border); border-radius: 4px; }
       .markdown-alert > :first-child { margin-top: 0; }
       .markdown-alert > :last-child { margin-bottom: 0; }
       .markdown-alert .markdown-alert-title { display: flex; font-weight: 500; align-items: center; margin-bottom: 4px; margin-top: 0; }
-      .markdown-alert-note { border-left-color: #1f6feb; }
-      .markdown-alert-note .markdown-alert-title { color: #2f81f7; }
-      .markdown-alert-tip { border-left-color: #238636; }
-      .markdown-alert-tip .markdown-alert-title { color: #3fb950; }
-      .markdown-alert-important { border-left-color: #8957e5; }
-      .markdown-alert-important .markdown-alert-title { color: #a371f7; }
-      .markdown-alert-warning { border-left-color: #9e6a03; }
-      .markdown-alert-warning .markdown-alert-title { color: #d29922; }
-      .markdown-alert-caution { border-left-color: #da3633; }
-      .markdown-alert-caution .markdown-alert-title { color: #f85149; }
+      
+      .markdown-alert-note { border-left-color: var(--color-alert-note); }
+      .markdown-alert-note .markdown-alert-title { color: var(--color-alert-note); }
+      .markdown-alert-tip { border-left-color: var(--color-alert-tip); }
+      .markdown-alert-tip .markdown-alert-title { color: var(--color-alert-tip); }
+      .markdown-alert-important { border-left-color: var(--color-alert-important); }
+      .markdown-alert-important .markdown-alert-title { color: var(--color-alert-important); }
+      .markdown-alert-warning { border-left-color: var(--color-alert-warning); }
+      .markdown-alert-warning .markdown-alert-title { color: var(--color-alert-warning); }
+      .markdown-alert-caution { border-left-color: var(--color-alert-caution); }
+      .markdown-alert-caution .markdown-alert-title { color: var(--color-alert-caution); }
+
+      .code-block-wrapper { position: relative; }
+      .copy-code-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 4px;
+        color: var(--color-muted);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        z-index: 10;
+      }
+      .copy-code-btn:hover {
+        background: rgba(110, 118, 129, 0.1);
+        border-color: var(--color-border);
+        color: var(--color-text);
+      }
+      .copy-code-btn::after {
+        content: "拷贝到剪贴板";
+        position: absolute;
+        top: -32px;
+        right: 0;
+        background: var(--color-text);
+        color: var(--color-bg);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      }
+      .copy-code-btn:hover::after { opacity: 1; }
+      .copy-code-btn.copied::after { display: none; }
+      .check-icon { color: #537290; display: none; }
+      
+      /* 数学公式居中显示 */
+      .math-display { text-align: center; margin: 16px 0; overflow-x: auto; overflow-y: hidden; }
     `;
 
     /* ================= DOM 引用 ================= */
@@ -397,16 +509,22 @@
     const menuOpen = document.querySelector("#menu-open");
     const menuSave = document.querySelector("#menu-save");
     const menuSaveAs = document.querySelector("#menu-save-as");
+    const menuTheme = document.querySelector("#menu-theme");
+    const themeLabel = document.querySelector("#theme-label");
 
     const isTauri = window.__TAURI_INTERNALS__ !== undefined || window.__TAURI__ !== undefined;
 
     /* ================= 增量渲染引擎 ================= */
-    // iframe 骨架只在启动时建立一次；之后每次渲染仅通过 postMessage 替换 body
     let previewReady = false;
     let pendingHtml = null;
 
     function ensurePreviewShell() {
       if (previewReady) return;
+
+      const themeVars = Object.entries(THEMES[currentTheme])
+        .map(([k, v]) => `${k}: ${v};`)
+        .join('\n');
+
       preview.onload = () => {
         previewReady = true;
         if (pendingHtml !== null) {
@@ -415,17 +533,121 @@
           postRender(h);
         }
       };
-      preview.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>${GITHUB_CSS}</style></head><body>
+      preview.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+        :root {
+          ${themeVars}
+        }
+        ${GITHUB_CSS}
+      </style>
+      <!-- 引入本地或 CDN 的 Mermaid 和 MathJax -->
+      <script src="./libs/mermaid.min.js"><\/script>
+      <script>
+        window.MathJax = {
+          tex: { inlineMath: [['$', '$'], ['\\\\(', '\\\\)']], displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']] },
+          svg: { fontCache: 'global' },
+          startup: { typeset: false }
+        };
+      <\/script>
+      <script src="./libs/tex-svg.js" async><\/script>
+      </head><body>
 <script>
-  let isSyncing = false, rightRaf = false;
+  let isSyncing = false, rightRaf = false, btnCounter = 0;
+  let renderTimeout = null;
+
   function getMax() { return document.documentElement.scrollHeight - window.innerHeight; }
+
+  function setupCopyButtons() {
+    document.querySelectorAll('pre').forEach(pre => {
+      // 排除数学公式块和 Mermaid 块
+      if (pre.querySelector('.language-math') || pre.querySelector('.language-mermaid')) return;
+      if (pre.parentElement.classList.contains('code-block-wrapper')) return;
+      
+      const wrapper = document.createElement('div');
+      wrapper.className = 'code-block-wrapper';
+      pre.parentNode.insertBefore(wrapper, pre);
+      wrapper.appendChild(pre);
+
+      const btn = document.createElement('button');
+      btn.className = 'copy-code-btn';
+      btn.dataset.id = 'btn_' + Date.now() + '_' + (btnCounter++);
+      btn.innerHTML = \`
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" class="copy-icon">
+          <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path>
+          <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
+        </svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" class="check-icon">
+          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path>
+        </svg>
+      \`;
+
+      btn.onclick = () => {
+        const codeText = pre.querySelector('code')?.innerText || pre.innerText;
+        window.parent.postMessage({ type: "copy-code", text: codeText, id: btn.dataset.id }, "*");
+      };
+      wrapper.appendChild(btn);
+    });
+  }
+
+  async function runAsyncRender(ratio) {
+    // 1. 替换 Mermaid
+    const mermaidBlocks = [];
+    document.querySelectorAll('code.language-mermaid').forEach(code => {
+      const pre = code.parentElement;
+      const div = document.createElement('div');
+      div.className = 'mermaid';
+      div.setAttribute('data-mermaid-code', code.textContent);
+      div.textContent = code.textContent;
+      pre.parentNode.replaceChild(div, pre);
+      mermaidBlocks.push(div);
+    });
+
+    // 2. 转换 Comrak 的数学节点为 MathJax 可读格式
+    document.querySelectorAll('span[data-math-style="inline"]').forEach(el => {
+      el.textContent = '$' + el.textContent + '$';
+    });
+    document.querySelectorAll('div[data-math-style="display"]').forEach(el => {
+      el.textContent = '$$' + el.textContent + '$$';
+    });
+    document.querySelectorAll('pre code.language-math').forEach(code => {
+      const pre = code.parentElement;
+      const div = document.createElement('div');
+      div.className = 'math-display';
+      div.textContent = '$$' + code.textContent + '$$';
+      pre.parentNode.replaceChild(div, pre);
+    });
+
+    // 3. 渲染 Mermaid
+    if (mermaidBlocks.length > 0 && window.mermaid) {
+      try {
+        const isLight = document.documentElement.style.getPropertyValue('--color-bg') === '#ffffff';
+        mermaid.initialize({ startOnLoad: false, theme: isLight ? 'default' : 'dark' });
+        await mermaid.run({ nodes: mermaidBlocks });
+      } catch(e) { console.error("Mermaid Error:", e); }
+    }
+
+    // 4. 渲染 MathJax
+    if (window.MathJax && MathJax.typesetPromise) {
+      try {
+        await MathJax.typesetPromise();
+      } catch(e) { console.error("MathJax Error:", e); }
+    }
+
+    // 5. 挂载复制按钮
+    setupCopyButtons();
+
+    // 6. 恢复滚动位置并解锁
+    requestAnimationFrame(() => {
+      const max = getMax();
+      if (max > 0) window.scrollTo(0, ratio * max);
+      requestAnimationFrame(() => { isSyncing = false; });
+    });
+  }
 
   window.addEventListener("message", (e) => {
     const d = e.data;
     if (!d) return;
 
     if (d.type === "render") {
-      // 增量更新：保留 <details> 展开状态 -> 替换 body -> 恢复滚动
       isSyncing = true;
       const openSet = new Set();
       document.querySelectorAll("details").forEach((el, i) => { if (el.open) openSet.add(i); });
@@ -433,19 +655,45 @@
       document.body.innerHTML = d.html;
 
       document.querySelectorAll("details").forEach((el, i) => { if (openSet.has(i)) el.open = true; });
-
-      requestAnimationFrame(() => {
-        const max = getMax();
-        if (max > 0) window.scrollTo(0, d.ratio * max);
-        requestAnimationFrame(() => { isSyncing = false; });
-      });
+      
+      runAsyncRender(d.ratio);
 
     } else if (d.type === "sync-scroll" && !isSyncing) {
-      // 来自编辑器滚动
       isSyncing = true;
       const max = getMax();
       if (max > 0) window.scrollTo(0, d.ratio * max);
       requestAnimationFrame(() => { isSyncing = false; });
+      
+    } else if (d.type === "copy-success") {
+      const btn = document.querySelector(\`.copy-code-btn[data-id="\${d.id}"]\`);
+      if (btn) {
+        btn.querySelector('.copy-icon').style.display = 'none';
+        btn.querySelector('.check-icon').style.display = 'block';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.querySelector('.copy-icon').style.display = 'block';
+          btn.querySelector('.check-icon').style.display = 'none';
+          btn.classList.remove('copied');
+        }, 2000);
+      }
+    } else if (d.type === "set-theme") {
+      Object.entries(d.vars).forEach(([k, v]) => {
+        document.documentElement.style.setProperty(k, v);
+      });
+      // 主题切换后，重新渲染 Mermaid 以适配颜色
+      const mermaidDivs = document.querySelectorAll('.mermaid');
+      if (mermaidDivs.length > 0 && window.mermaid) {
+        const isLight = d.themeName === 'light';
+        mermaid.initialize({ startOnLoad: false, theme: isLight ? 'default' : 'dark' });
+        mermaidDivs.forEach(div => {
+          const code = div.getAttribute('data-mermaid-code');
+          if (code) {
+            div.removeAttribute('data-processed');
+            div.innerHTML = code;
+          }
+        });
+        mermaid.run({ nodes: Array.from(mermaidDivs) });
+      }
     }
   });
 
@@ -479,7 +727,11 @@
       let html;
       try {
         html = markdownToHTML(md, {
-          extension: { table: true, tasklist: true, strikethrough: true, autolink: true, alerts: true },
+          extension: {
+            table: true, tasklist: true, strikethrough: true, autolink: true, alerts: true,
+            math_dollars: true, // 开启 $...$ 和 $$...$$
+            math_code: true     // 开启 ```math
+          },
           render: { unsafe: true, githubPreLang: true, hardbreaks: true },
         });
         const alertRegex = /<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([\s\S]*?)<\/p>([\s\S]*?)<\/blockquote>/gi;
@@ -618,7 +870,6 @@
       renderTimer = setTimeout(renderPreview, 150);
     });
 
-    // 左侧 -> 右侧滚动同步
     let isSyncingLeft = false, isSyncingRight = false, leftRaf = false;
     editor.addEventListener("scroll", () => {
       if (isSyncingLeft || leftRaf) return;
@@ -632,7 +883,6 @@
       });
     });
 
-    // 右侧 -> 左侧滚动同步
     window.addEventListener("message", (e) => {
       if (e.data && e.data.type === "sync-scroll-back") {
         if (isSyncingRight) return;
@@ -641,6 +891,45 @@
         const target = e.data.ratio * max;
         if (Math.abs(editor.scrollTop - target) > 1) editor.scrollTop = target;
         requestAnimationFrame(() => { isSyncingLeft = false; });
+      }
+      else if (e.data && e.data.type === "copy-code") {
+        navigator.clipboard.writeText(e.data.text).then(() => {
+          if (preview.contentWindow) {
+            preview.contentWindow.postMessage({ type: "copy-success", id: e.data.id }, "*");
+          }
+        }).catch(err => {
+          console.error("Clipboard write failed, falling back:", err);
+          const ta = document.createElement("textarea");
+          ta.value = e.data.text;
+          ta.style.position = "fixed";
+          ta.style.top = "-9999px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          try {
+            document.execCommand('copy');
+            if (preview.contentWindow) {
+              preview.contentWindow.postMessage({ type: "copy-success", id: e.data.id }, "*");
+            }
+          } catch (e2) {
+            console.error("Fallback copy failed:", e2);
+          }
+          document.body.removeChild(ta);
+        });
+      }
+    });
+
+    /* ================= 主题切换逻辑 ================= */
+    menuTheme.addEventListener("click", () => {
+      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      themeLabel.textContent = currentTheme === 'dark' ? '深色' : '浅色';
+
+      if (previewReady && preview.contentWindow) {
+        preview.contentWindow.postMessage({
+          type: "set-theme",
+          vars: THEMES[currentTheme],
+          themeName: currentTheme
+        }, "*");
       }
     });
 
