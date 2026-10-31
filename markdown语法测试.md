@@ -124,6 +124,13 @@ hello()
 
 *（语法：使用 ` ```mermaid ` 代码块，由 Mermaid 引擎在预览侧渲染，支持深浅主题自动切换）*
 
+8.0 简单流程图
+```mermaid
+graph TD
+    A[开始] --> B[处理中]
+    B --> C[结束]
+```
+
 ### 8.1 流程图 (Flowchart)
 
 ```mermaid
@@ -354,15 +361,15 @@ $$
 | $\int_a^b f(x)\,dx$ | 定积分 |
 | $\nabla \times \vec{B} = \mu_0 \vec{J}$ | 安培环路定理（静态形式） |
 
-### 9.9 ` ```math ` 代码块
+### 9.9 块级公式（傅里叶变换 / 热传导方程）
 
-```math
+$$
 f(x) = \int_{-\infty}^{\infty} \hat{f}(\xi) \, e^{2\pi i \xi x} \, d\xi
-```
+$$
 
-```math
+$$
 \frac{\partial u}{\partial t} = \alpha \frac{\partial^2 u}{\partial x^2}
-```
+$$
 
 ### 9.10 综合示例
 

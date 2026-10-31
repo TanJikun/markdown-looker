@@ -349,23 +349,23 @@
     /* ================= 1. 定义主题字典 ================= */
     const THEMES = {
       dark: {
-        '--color-bg': '#0d1117',
+        '--color-bg': '#010409',           // 极黑背景
         '--color-text': '#e6edf3',
         '--color-muted': '#8b949e',
         '--color-border': '#30363d',
         '--color-border-heavy': '#B7BDC8',
         '--color-link': '#58a6ff',
-        '--color-code-bg': '#161b22',
+        '--color-code-bg': '#151B23',      // 代码块背景
         '--color-table-head': '#010409',
         '--color-table-odd': '#010409',
         '--color-table-even': '#151B23',
-        '--color-hr': '#010409',
+        '--color-hr': '#B7BDC8',           // 分割线颜色
         '--color-alert-note': '#409EFF',
-        '--color-alert-tip': '#409EFF',
+        '--color-alert-tip': '#09B43A',
         '--color-alert-important': '#B87FFF',
         '--color-alert-warning': '#E09B13',
         '--color-alert-caution': '#FF6A69',
-        '--color-scroll-track': '#0d1117',
+        '--color-scroll-track': '#010409',
         '--color-scroll-thumb': '#484f58',
         '--color-scroll-thumb-hover': '#6e7681'
       },
@@ -412,8 +412,10 @@
       h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }
       
       code { background: rgba(110,118,129,.4); padding: .2em .4em; border-radius: 6px; font-size: 85%; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
-      pre { background: var(--color-code-bg) !important; padding: 16px; border-radius: 6px; overflow: auto; border: 1px solid var(--color-border); margin-bottom: 16px; }
-      pre code { background: transparent; padding: 0; font-size: 100%; color: var(--color-text); }
+      
+      /* ★ 严格锁定：代码块背景 #151B23，无边框，无圆角 */
+      pre { background-color: var(--color-code-bg) !important; padding: 16px; border: none !important; border-radius: 0 !important; overflow: auto; margin-bottom: 16px; }
+      pre code { background: transparent !important; padding: 0; font-size: 100%; color: var(--color-text); }
 
       blockquote { margin: 0; padding: 0 1em; color: var(--color-muted); border-left: .25em solid var(--color-border); }
       
@@ -437,7 +439,7 @@
       .task-list-item { list-style-type: none; }
       .task-list-item input { margin: 0 .2em .25em -1.4em; vertical-align: middle; }
       
-      .markdown-alert { padding: 0.5rem 1rem; margin-bottom: 16px; color: inherit; border-left: .25em solid var(--color-border); border-radius: 4px; }
+      .markdown-alert { padding: 0.5rem 1rem; margin-bottom: 16px; color: inherit; border-left: 5px solid var(--color-border); border-radius: 0; }
       .markdown-alert > :first-child { margin-top: 0; }
       .markdown-alert > :last-child { margin-bottom: 0; }
       .markdown-alert .markdown-alert-title { display: flex; font-weight: 500; align-items: center; margin-bottom: 4px; margin-top: 0; }
@@ -517,9 +519,11 @@
     /* ================= 增量渲染引擎 ================= */
     let previewReady = false;
     let pendingHtml = null;
+    let isCreatingPreview = false; // 增加 iframe 加载锁，防止无限重置导致黑屏
 
     function ensurePreviewShell() {
-      if (previewReady) return;
+      if (previewReady || isCreatingPreview) return;
+      isCreatingPreview = true;
 
       const themeVars = Object.entries(THEMES[currentTheme])
         .map(([k, v]) => `${k}: ${v};`)
@@ -527,6 +531,7 @@
 
       preview.onload = () => {
         previewReady = true;
+        isCreatingPreview = false; // 加载完成，解锁
         if (pendingHtml !== null) {
           const h = pendingHtml;
           pendingHtml = null;
@@ -558,8 +563,8 @@
 
   function setupCopyButtons() {
     document.querySelectorAll('pre').forEach(pre => {
-      // 排除数学公式块和 Mermaid 块
-      if (pre.querySelector('.language-math') || pre.querySelector('.language-mermaid')) return;
+      // 排除 Mermaid、Math 和数学公式块，防止给它们加上复制按钮
+      if (pre.getAttribute('lang') === 'mermaid' || pre.getAttribute('lang') === 'math' || pre.querySelector('.language-math') || pre.querySelector('.language-mermaid')) return;
       if (pre.parentElement.classList.contains('code-block-wrapper')) return;
       
       const wrapper = document.createElement('div');
@@ -589,58 +594,64 @@
   }
 
   async function runAsyncRender(ratio) {
-    // 1. 替换 Mermaid
-    const mermaidBlocks = [];
-    document.querySelectorAll('code.language-mermaid').forEach(code => {
-      const pre = code.parentElement;
-      const div = document.createElement('div');
-      div.className = 'mermaid';
-      div.setAttribute('data-mermaid-code', code.textContent);
-      div.textContent = code.textContent;
-      pre.parentNode.replaceChild(div, pre);
-      mermaidBlocks.push(div);
-    });
+    try {
+      // 1. 替换 Mermaid (同时匹配 pre[lang="mermaid"] 和 class)
+      const mermaidBlocks = [];
+      document.querySelectorAll('pre[lang="mermaid"] > code, pre > code.language-mermaid').forEach(code => {
+        const pre = code.parentElement;
+        if (!pre || !pre.parentNode) return;
+        const div = document.createElement('div');
+        div.className = 'mermaid';
+        div.setAttribute('data-mermaid-code', code.textContent);
+        div.textContent = code.textContent;
+        pre.parentNode.replaceChild(div, pre);
+        mermaidBlocks.push(div);
+      });
 
-    // 2. 转换 Comrak 的数学节点为 MathJax 可读格式
-    document.querySelectorAll('span[data-math-style="inline"]').forEach(el => {
-      el.textContent = '$' + el.textContent + '$';
-    });
-    document.querySelectorAll('div[data-math-style="display"]').forEach(el => {
-      el.textContent = '$$' + el.textContent + '$$';
-    });
-    document.querySelectorAll('pre code.language-math').forEach(code => {
-      const pre = code.parentElement;
-      const div = document.createElement('div');
-      div.className = 'math-display';
-      div.textContent = '$$' + code.textContent + '$$';
-      pre.parentNode.replaceChild(div, pre);
-    });
+      // 2. 转换 Comrak 的数学节点为 MathJax 可读格式
+      document.querySelectorAll('span[data-math-style="inline"]').forEach(el => {
+        el.textContent = '$' + el.textContent + '$';
+      });
+      document.querySelectorAll('div[data-math-style="display"]').forEach(el => {
+        el.textContent = '$$' + el.textContent + '$$';
+      });
+      document.querySelectorAll('pre[lang="math"] > code, pre > code.language-math').forEach(code => {
+        const pre = code.parentElement;
+        if (!pre || !pre.parentNode) return;
+        const div = document.createElement('div');
+        div.className = 'math-display';
+        div.textContent = '$$' + code.textContent + '$$';
+        pre.parentNode.replaceChild(div, pre);
+      });
 
-    // 3. 渲染 Mermaid
-    if (mermaidBlocks.length > 0 && window.mermaid) {
-      try {
-        const isLight = document.documentElement.style.getPropertyValue('--color-bg') === '#ffffff';
-        mermaid.initialize({ startOnLoad: false, theme: isLight ? 'default' : 'dark' });
-        await mermaid.run({ nodes: mermaidBlocks });
-      } catch(e) { console.error("Mermaid Error:", e); }
+      // 3. 渲染 Mermaid
+      if (mermaidBlocks.length > 0 && window.mermaid) {
+        try {
+          const isLight = document.documentElement.style.getPropertyValue('--color-bg') === '#ffffff';
+          mermaid.initialize({ startOnLoad: false, theme: isLight ? 'default' : 'dark' });
+          await mermaid.run({ nodes: mermaidBlocks });
+        } catch(e) { console.error("Mermaid Error:", e); }
+      }
+
+      // 4. 渲染 MathJax
+      if (window.MathJax && MathJax.typesetPromise) {
+        try {
+          await MathJax.typesetPromise();
+        } catch(e) { console.error("MathJax Error:", e); }
+      }
+
+      // 5. 挂载复制按钮
+      setupCopyButtons();
+    } catch (err) {
+      console.error("Render Error:", err);
+    } finally {
+      // 6. 恢复滚动位置并解锁
+      requestAnimationFrame(() => {
+        const max = getMax();
+        if (max > 0) window.scrollTo(0, ratio * max);
+        requestAnimationFrame(() => { isSyncing = false; });
+      });
     }
-
-    // 4. 渲染 MathJax
-    if (window.MathJax && MathJax.typesetPromise) {
-      try {
-        await MathJax.typesetPromise();
-      } catch(e) { console.error("MathJax Error:", e); }
-    }
-
-    // 5. 挂载复制按钮
-    setupCopyButtons();
-
-    // 6. 恢复滚动位置并解锁
-    requestAnimationFrame(() => {
-      const max = getMax();
-      if (max > 0) window.scrollTo(0, ratio * max);
-      requestAnimationFrame(() => { isSyncing = false; });
-    });
   }
 
   window.addEventListener("message", (e) => {
