@@ -3,17 +3,38 @@
 
 <head>
   <meta charset="utf-8">
+  <meta name="color-scheme" content="dark light">
   <title>Markdown Looker</title>
   <style>
-    :root {
-      --bg: #0d1117;
-      --panel: #161b22;
-      --border: #30363d;
+    /* ================= 1. 定义全局 UI 主题变量 ================= */
+    html {
+      /* 深色 UI (GitHub Dark Default) */
+      --bg: #0D1117;
+      --panel: #161B22;
+      --border: #3D444D;
       --text: #e6edf3;
       --muted: #8b949e;
       --accent: #58a6ff;
-      --tab-bg: #0d1117;
-      --tab-active-bg: #161b22;
+      --tab-bg: #0D1117;
+      --tab-active-bg: #161B22;
+      --hover-bg: #1c2128;
+      --scroll-track: #0D1117;
+      --scroll-thumb: #484f58;
+    }
+
+    html.light {
+      /* 浅色 UI (纯白 + 1px 灰边框) */
+      --bg: #ffffff;
+      --panel: #ffffff;
+      --border: #454C54;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #0969da;
+      --tab-bg: #ffffff;
+      --tab-active-bg: #ffffff;
+      --hover-bg: #f6f8fa;
+      --scroll-track: #ffffff;
+      --scroll-thumb: #d0d7de;
     }
 
     * {
@@ -37,26 +58,26 @@
     }
 
     ::-webkit-scrollbar-track {
-      background: var(--panel);
+      background: var(--scroll-track);
     }
 
     ::-webkit-scrollbar-thumb {
-      background: #484f58;
+      background: var(--scroll-thumb);
       border-radius: 6px;
-      border: 3px solid var(--panel);
+      border: 3px solid var(--scroll-track);
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: #6e7681;
+      background: var(--muted);
     }
 
     ::-webkit-scrollbar-corner {
-      background: var(--panel);
+      background: var(--scroll-track);
     }
 
     * {
       scrollbar-width: thin;
-      scrollbar-color: #484f58 var(--panel);
+      scrollbar-color: var(--scroll-thumb) var(--scroll-track);
     }
 
     #top-bar {
@@ -90,7 +111,7 @@
     }
 
     #menu-btn:hover {
-      background: var(--border);
+      background: var(--hover-bg);
     }
 
     #dropdown-menu {
@@ -101,7 +122,7 @@
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 0 0 6px 6px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
       min-width: 200px;
       flex-direction: column;
       padding: 4px 0;
@@ -124,13 +145,40 @@
     }
 
     #dropdown-menu button:hover {
-      background: var(--border);
+      background: var(--hover-bg);
     }
 
     .shortcut {
       color: var(--muted);
       font-size: 12px;
       margin-left: 20px;
+    }
+
+    /* 主题二级菜单 */
+    #theme-submenu-container {
+      position: relative;
+    }
+
+    #theme-submenu {
+      display: none;
+      position: absolute;
+      left: 100%;
+      top: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 0 6px 6px 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
+      min-width: 120px;
+      flex-direction: column;
+      padding: 4px 0;
+    }
+
+    #theme-submenu-container:hover #theme-submenu {
+      display: flex;
+    }
+
+    #theme-submenu button {
+      justify-content: flex-start;
     }
 
     #tabs-container {
@@ -160,7 +208,7 @@
     }
 
     .tab:hover {
-      background: #1c2128;
+      background: var(--hover-bg);
     }
 
     .tab.active {
@@ -190,7 +238,7 @@
     }
 
     .tab-close:hover {
-      background: #30363d;
+      background: var(--border);
       color: #f85149;
     }
 
@@ -219,7 +267,8 @@
       padding: 24px;
       border: none;
       border-right: 1px solid var(--border);
-      background: var(--tab-active-bg);
+      background: var(--bg);
+      /* ★ 修改：统一为渲染区背景色 */
       color: var(--text);
       font: 14px/1.6 "SFMono-Regular", Consolas, monospace;
       resize: none;
@@ -247,7 +296,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.4);
       z-index: 999;
       align-items: center;
       justify-content: center;
@@ -263,7 +312,7 @@
       border-radius: 8px;
       padding: 24px;
       max-width: 400px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     }
 
     #modal-dialog h3 {
@@ -315,7 +364,17 @@
         <button id="menu-save">保存 <span class="shortcut">Ctrl+S</span></button>
         <button id="menu-save-as">另存为 <span class="shortcut">Ctrl+Shift+S</span></button>
         <hr style="border:0; border-top:1px solid var(--border); margin:4px 0;">
-        <button id="menu-theme">切换主题 <span class="shortcut" id="theme-label">深色</span></button>
+
+        <!-- 主题二级菜单 -->
+        <div id="theme-submenu-container">
+          <button id="menu-theme">主题 <span class="shortcut" id="theme-label">跟随系统</span></button>
+          <div id="theme-submenu">
+            <button class="theme-option" data-theme="light">浅色</button>
+            <button class="theme-option" data-theme="dark">深色</button>
+            <button class="theme-option" data-theme="system">跟随系统</button>
+          </div>
+        </div>
+
       </div>
     </div>
     <div id="tabs-container"></div>
@@ -346,53 +405,55 @@
   <script type="module">
     import { markdownToHTML } from "./comrak/index.js";
 
-    /* ================= 1. 定义主题字典 ================= */
+    /* ================= 1. 定义渲染区主题字典 ================= */
     const THEMES = {
       dark: {
-        '--color-bg': '#010409',           // 极黑背景
+        '--color-bg': '#0D1117',
         '--color-text': '#e6edf3',
         '--color-muted': '#8b949e',
-        '--color-border': '#30363d',
-        '--color-border-heavy': '#B7BDC8',
+        '--color-border': '#3D444D',
+        '--color-border-heavy': '#3D444D',
         '--color-link': '#58a6ff',
-        '--color-code-bg': '#151B23',      // 代码块背景
-        '--color-table-head': '#010409',
-        '--color-table-odd': '#010409',
+        '--color-inline-code-bg': '#1E242A',
+        '--color-code-bg': '#151B23',
+        '--color-table-head': '#0D1117',
+        '--color-table-odd': '#0D1117',
         '--color-table-even': '#151B23',
-        '--color-hr': '#B7BDC8',           // 分割线颜色
-        '--color-alert-note': '#409EFF',
-        '--color-alert-tip': '#09B43A',
-        '--color-alert-important': '#B87FFF',
-        '--color-alert-warning': '#E09B13',
-        '--color-alert-caution': '#FF6A69',
-        '--color-scroll-track': '#010409',
+        '--color-hr': '#3D444D',
+        '--color-hr-height': '1px',
+        '--color-alert-note': '#1F6FEB',
+        '--color-alert-tip': '#238636',
+        '--color-alert-important': '#8957E5',
+        '--color-alert-warning': '#9E6A03',
+        '--color-alert-caution': '#DA3633',
+        '--color-scroll-track': '#0D1117',
         '--color-scroll-thumb': '#484f58',
         '--color-scroll-thumb-hover': '#6e7681'
       },
       light: {
-        '--color-bg': '#ffffff',
+        '--color-bg': '#FFFFFF',
         '--color-text': '#1f2328',
         '--color-muted': '#656d76',
-        '--color-border': '#d0d7de',
-        '--color-border-heavy': '#d0d7de',
+        '--color-border': '#454C54',
+        '--color-border-heavy': '#454C54',
         '--color-link': '#0969da',
-        '--color-code-bg': '#f6f8fa',
-        '--color-table-head': '#f6f8fa',
-        '--color-table-odd': '#f6f8fa',
-        '--color-table-even': '#ffffff',
-        '--color-hr': '#d0d7de',
-        '--color-alert-note': '#0969da',
-        '--color-alert-tip': '#1a7f37',
-        '--color-alert-important': '#8250df',
-        '--color-alert-warning': '#9a6700',
-        '--color-alert-caution': '#cf222e',
-        '--color-scroll-track': '#ffffff',
+        '--color-inline-code-bg': '#E0E6EB',
+        '--color-code-bg': '#E6EAEF',
+        '--color-table-head': '#FFFFFF',
+        '--color-table-odd': '#FFFFFF',
+        '--color-table-even': '#E6EAEF',
+        '--color-hr': '#454C54',
+        '--color-hr-height': '1px',
+        '--color-alert-note': '#0349B4',
+        '--color-alert-tip': '#055D20',
+        '--color-alert-important': '#622CBC',
+        '--color-alert-warning': '#744500',
+        '--color-alert-caution': '#A0111F',
+        '--color-scroll-track': '#FFFFFF',
         '--color-scroll-thumb': '#d0d7de',
         '--color-scroll-thumb-hover': '#afb8c1'
       }
     };
-
-    let currentTheme = 'dark';
 
     /* ================= 2. 定义使用变量的 CSS 骨架 ================= */
     const GITHUB_CSS = `
@@ -411,13 +472,12 @@
       h1, h2 { border-bottom: 1px solid var(--color-border-heavy); padding-bottom: .3em; }
       h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }
       
-      code { background: rgba(110,118,129,.4); padding: .2em .4em; border-radius: 6px; font-size: 85%; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+      code { background: var(--color-inline-code-bg); padding: .2em .4em; border-radius: 6px; font-size: 85%; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
       
-      /* ★ 严格锁定：代码块背景 #151B23，无边框，无圆角 */
       pre { background-color: var(--color-code-bg) !important; padding: 16px; border: none !important; border-radius: 0 !important; overflow: auto; margin-bottom: 16px; }
       pre code { background: transparent !important; padding: 0; font-size: 100%; color: var(--color-text); }
 
-      blockquote { margin: 0; padding: 0 1em; color: var(--color-muted); border-left: .25em solid var(--color-border); }
+      blockquote { margin: 0; padding: 0 1em; color: var(--color-muted); border-left: 5px solid var(--color-border); }
       
       table { border-collapse: collapse; margin: 16px 0; width: auto; }
       th, td { border: 1px solid var(--color-border-heavy); padding: 6px 13px; }
@@ -434,7 +494,7 @@
       img { max-width: 100%; }
       ul, ol { padding-left: 2em; }
       
-      hr { height: 2px; padding: 0; margin: 24px 0; background: var(--color-hr); border: 0; }
+      hr { height: var(--color-hr-height); padding: 0; margin: 24px 0; background: var(--color-hr); border: 0; }
       
       .task-list-item { list-style-type: none; }
       .task-list-item input { margin: 0 .2em .25em -1.4em; vertical-align: middle; }
@@ -499,7 +559,6 @@
       .copy-code-btn.copied::after { display: none; }
       .check-icon { color: #537290; display: none; }
       
-      /* 数学公式居中显示 */
       .math-display { text-align: center; margin: 16px 0; overflow-x: auto; overflow-y: hidden; }
     `;
 
@@ -511,7 +570,6 @@
     const menuOpen = document.querySelector("#menu-open");
     const menuSave = document.querySelector("#menu-save");
     const menuSaveAs = document.querySelector("#menu-save-as");
-    const menuTheme = document.querySelector("#menu-theme");
     const themeLabel = document.querySelector("#theme-label");
 
     const isTauri = window.__TAURI_INTERNALS__ !== undefined || window.__TAURI__ !== undefined;
@@ -519,19 +577,20 @@
     /* ================= 增量渲染引擎 ================= */
     let previewReady = false;
     let pendingHtml = null;
-    let isCreatingPreview = false; // 增加 iframe 加载锁，防止无限重置导致黑屏
+    let isCreatingPreview = false;
 
     function ensurePreviewShell() {
       if (previewReady || isCreatingPreview) return;
       isCreatingPreview = true;
 
-      const themeVars = Object.entries(THEMES[currentTheme])
+      const resolvedTheme = resolveTheme(currentTheme);
+      const themeVars = Object.entries(THEMES[resolvedTheme])
         .map(([k, v]) => `${k}: ${v};`)
         .join('\n');
 
       preview.onload = () => {
         previewReady = true;
-        isCreatingPreview = false; // 加载完成，解锁
+        isCreatingPreview = false;
         if (pendingHtml !== null) {
           const h = pendingHtml;
           pendingHtml = null;
@@ -544,7 +603,6 @@
         }
         ${GITHUB_CSS}
       </style>
-      <!-- 引入本地或 CDN 的 Mermaid 和 MathJax -->
       <script src="./libs/mermaid.min.js"><\/script>
       <script>
         window.MathJax = {
@@ -563,7 +621,6 @@
 
   function setupCopyButtons() {
     document.querySelectorAll('pre').forEach(pre => {
-      // 排除 Mermaid、Math 和数学公式块，防止给它们加上复制按钮
       if (pre.getAttribute('lang') === 'mermaid' || pre.getAttribute('lang') === 'math' || pre.querySelector('.language-math') || pre.querySelector('.language-mermaid')) return;
       if (pre.parentElement.classList.contains('code-block-wrapper')) return;
       
@@ -595,7 +652,6 @@
 
   async function runAsyncRender(ratio) {
     try {
-      // 1. 替换 Mermaid (同时匹配 pre[lang="mermaid"] 和 class)
       const mermaidBlocks = [];
       document.querySelectorAll('pre[lang="mermaid"] > code, pre > code.language-mermaid').forEach(code => {
         const pre = code.parentElement;
@@ -608,7 +664,6 @@
         mermaidBlocks.push(div);
       });
 
-      // 2. 转换 Comrak 的数学节点为 MathJax 可读格式
       document.querySelectorAll('span[data-math-style="inline"]').forEach(el => {
         el.textContent = '$' + el.textContent + '$';
       });
@@ -624,28 +679,24 @@
         pre.parentNode.replaceChild(div, pre);
       });
 
-      // 3. 渲染 Mermaid
       if (mermaidBlocks.length > 0 && window.mermaid) {
         try {
-          const isLight = document.documentElement.style.getPropertyValue('--color-bg') === '#ffffff';
+          const isLight = document.documentElement.style.getPropertyValue('--color-bg') === '#FFFFFF';
           mermaid.initialize({ startOnLoad: false, theme: isLight ? 'default' : 'dark' });
           await mermaid.run({ nodes: mermaidBlocks });
         } catch(e) { console.error("Mermaid Error:", e); }
       }
 
-      // 4. 渲染 MathJax
       if (window.MathJax && MathJax.typesetPromise) {
         try {
           await MathJax.typesetPromise();
         } catch(e) { console.error("MathJax Error:", e); }
       }
 
-      // 5. 挂载复制按钮
       setupCopyButtons();
     } catch (err) {
       console.error("Render Error:", err);
     } finally {
-      // 6. 恢复滚动位置并解锁
       requestAnimationFrame(() => {
         const max = getMax();
         if (max > 0) window.scrollTo(0, ratio * max);
@@ -691,7 +742,6 @@
       Object.entries(d.vars).forEach(([k, v]) => {
         document.documentElement.style.setProperty(k, v);
       });
-      // 主题切换后，重新渲染 Mermaid 以适配颜色
       const mermaidDivs = document.querySelectorAll('.mermaid');
       if (mermaidDivs.length > 0 && window.mermaid) {
         const isLight = d.themeName === 'light';
@@ -740,8 +790,8 @@
         html = markdownToHTML(md, {
           extension: {
             table: true, tasklist: true, strikethrough: true, autolink: true, alerts: true,
-            math_dollars: true, // 开启 $...$ 和 $$...$$
-            math_code: true     // 开启 ```math
+            math_dollars: true,
+            math_code: true
           },
           render: { unsafe: true, githubPreLang: true, hardbreaks: true },
         });
@@ -931,16 +981,67 @@
     });
 
     /* ================= 主题切换逻辑 ================= */
-    menuTheme.addEventListener("click", () => {
-      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      themeLabel.textContent = currentTheme === 'dark' ? '深色' : '浅色';
+    let currentTheme = 'system';
 
+    function resolveTheme(theme) {
+      if (theme === 'system') {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      return theme;
+    }
+
+    function applyTheme(theme) {
+      currentTheme = theme;
+      const resolved = resolveTheme(theme);
+
+      // 1. 切换外层 UI 颜色类名
+      if (resolved === 'light') {
+        document.documentElement.classList.add('light');
+      } else {
+        document.documentElement.classList.remove('light');
+      }
+
+      // 2. 同步 Tauri 原生标题栏（窗口）主题
+      if (isTauri) {
+        try {
+          if (window.__TAURI__.window.getCurrentWindow) {
+            window.__TAURI__.window.getCurrentWindow().setTheme(resolved);
+          } else if (window.__TAURI__.window.getCurrent) {
+            window.__TAURI__.window.getCurrent().setTheme(resolved);
+          } else if (window.__TAURI_INTERNALS__.invoke) {
+            window.__TAURI_INTERNALS__.invoke('plugin:window|set_theme', { label: 'main', value: resolved });
+          }
+        } catch (e) {
+          console.warn("无法设置 Tauri 窗口主题，请检查 tauri.conf.json 中的权限配置。", e);
+        }
+      }
+
+      // 3. 更新 Label
+      const labels = { light: '浅色', dark: '深色', system: '跟随系统' };
+      themeLabel.textContent = labels[theme];
+
+      // 4. 更新 iframe 内部渲染
       if (previewReady && preview.contentWindow) {
         preview.contentWindow.postMessage({
           type: "set-theme",
-          vars: THEMES[currentTheme],
-          themeName: currentTheme
+          vars: THEMES[resolved],
+          themeName: resolved
         }, "*");
+      }
+    }
+
+    // 绑定子菜单点击事件
+    document.querySelectorAll('.theme-option').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        applyTheme(btn.dataset.theme);
+      });
+    });
+
+    // 监听系统深浅色切换
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (currentTheme === 'system') {
+        applyTheme('system');
       }
     });
 
@@ -1036,6 +1137,10 @@
 
     /* ================= 初始化 ================= */
     async function init() {
+      // 1. 初始化主题（默认跟随系统）
+      applyTheme('system');
+
+      // 2. 尝试加载 Tauri 文件
       if (isTauri) {
         try {
           const { invoke } = window.__TAURI__.core;
@@ -1058,6 +1163,7 @@
         } catch (e) { console.error(e); }
       }
 
+      // 3. 兜底创建空标签页
       if (tabs.length === 0) {
         createTab(null, "# 欢迎使用 Markdown Looker\n\n请点击左上角打开文件，或双击文件使用本程序打开。");
       }

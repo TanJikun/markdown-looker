@@ -15,7 +15,8 @@
         "height": 800,
         "maximized": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "theme": null
       }
     ],
     "security": {
