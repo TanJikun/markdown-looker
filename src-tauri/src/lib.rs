@@ -1,6 +1,9 @@
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
@@ -23,17 +26,13 @@ fn default_theme() -> String {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self {
-            theme: default_theme(),
-        }
+        Self { theme: default_theme() }
     }
 }
 
 fn get_config_path() -> Result<PathBuf, String> {
     let exe = env::current_exe().map_err(|e| format!("无法获取程序路径: {}", e))?;
-    let dir = exe
-        .parent()
-        .ok_or_else(|| "无法获取程序所在目录".to_string())?;
+    let dir = exe.parent().ok_or_else(|| "无法获取程序所在目录".to_string())?;
     Ok(dir.join("config.json"))
 }
 
@@ -55,6 +54,79 @@ fn save_config(config: AppConfig) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| format!("写入配置失败: {}", e))
 }
 
+// ==================== 日志（logs/ 目录，与 exe 同目录） ====================
+const MAX_LOGS: usize = 10;
+
+struct LogState(Mutex<Option<PathBuf>>);
+
+fn log_dir() -> Result<PathBuf, String> {
+    let exe = env::current_exe().map_err(|e| format!("无法获取程序路径: {}", e))?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| "无法获取程序所在目录".to_string())?
+        .join("logs");
+    fs::create_dir_all(&dir).map_err(|e| format!("创建日志目录失败: {}", e))?;
+    Ok(dir)
+}
+
+fn create_new_log(dir: &PathBuf) -> Result<PathBuf, String> {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("获取时间失败: {}", e))?
+        .as_millis();
+    let path = dir.join(format!("app_{}.log", now_ms));
+    let header = format!(
+        "=== Markdown Looker Log ===\nCreated: {}\n\n",
+        now_ms
+    );
+    fs::write(&path, header).map_err(|e| format!("创建日志文件失败: {}", e))?;
+    Ok(path)
+}
+
+fn cleanup_old_logs(dir: &PathBuf) {
+    let entries: Vec<PathBuf> = match fs::read_dir(dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().map_or(false, |x| x == "log"))
+            .collect(),
+        Err(_) => return,
+    };
+
+    if entries.len() <= MAX_LOGS {
+        return;
+    }
+
+    // 文件名含时间戳，字典序即时间序
+    let mut sorted = entries;
+    sorted.sort();
+    let to_remove = sorted.len() - MAX_LOGS;
+    for path in sorted.iter().take(to_remove) {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn init_log() -> Result<PathBuf, String> {
+    let dir = log_dir()?;
+    let log_path = create_new_log(&dir)?;
+    cleanup_old_logs(&dir);
+    Ok(log_path)
+}
+
+#[tauri::command]
+fn append_log(message: String, state: tauri::State<LogState>) -> Result<(), String> {
+    let guard = state.0.lock().map_err(|e| format!("锁失败: {}", e))?;
+    if let Some(path) = guard.as_ref() {
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+            .map_err(|e| format!("打开日志失败: {}", e))?;
+        writeln!(file, "{}", message).map_err(|e| format!("写日志失败: {}", e))?;
+    }
+    Ok(())
+}
+
 // ==================== 文件读写 ====================
 #[tauri::command]
 fn get_initial_file() -> Option<FileData> {
@@ -63,10 +135,7 @@ fn get_initial_file() -> Option<FileData> {
         let path = &args[1];
         if path.ends_with(".md") || path.ends_with(".markdown") || path.ends_with(".txt") {
             if let Ok(content) = fs::read_to_string(path) {
-                return Some(FileData {
-                    path: path.clone(),
-                    content,
-                });
+                return Some(FileData { path: path.clone(), content });
             }
         }
     }
@@ -90,7 +159,6 @@ fn save_file(path: String, content: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // 1. 注册单实例插件
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if argv.len() > 1 {
                 let path = &argv[1];
@@ -102,27 +170,35 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        // ★ 新增 setup：显式设置窗口图标（任务栏 + 标题栏左上角 + Alt+Tab）
         .setup(|app| {
+            // 设置窗口图标
             if let Some(window) = app.get_webview_window("main") {
-                // 从 bundle.icon 自动解析出的默认图标（Tauri v2 会取 .ico 最佳帧）
                 if let Some(icon) = app.default_window_icon() {
-                    if let Err(e) = window.set_icon(icon.clone()) {
-                        eprintln!("[icon] 设置窗口图标失败: {}", e);
-                    }
-                } else {
-                    eprintln!("[icon] default_window_icon 为空，请检查 tauri.conf.json 的 bundle.icon 是否包含 icons/icon.ico");
+                    let _ = window.set_icon(icon.clone());
                 }
             }
+
+            // 初始化日志
+            match init_log() {
+                Ok(path) => {
+                    eprintln!("[log] 日志文件: {}", path.display());
+                    app.manage(LogState(Mutex::new(Some(path))));
+                }
+                Err(e) => {
+                    eprintln!("[log] 初始化日志失败: {}", e);
+                    app.manage(LogState(Mutex::new(None)));
+                }
+            }
+
             Ok(())
         })
-        // 2. 注册命令
         .invoke_handler(tauri::generate_handler![
             get_initial_file,
             read_file,
             save_file,
             load_config,
-            save_config
+            save_config,
+            append_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

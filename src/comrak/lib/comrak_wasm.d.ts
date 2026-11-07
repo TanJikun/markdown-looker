@@ -1,28 +1,45 @@
-// @generated file from wasmbuild -- do not edit
-// deno-lint-ignore-file
-// deno-fmt-ignore-file
-
-export function markdown_to_html(md: string, opts: Options): string;
-
-export interface Options {
-  extension_autolink: boolean;
-  extension_description_lists: boolean;
-  extension_footnotes: boolean;
-  extension_front_matter_delimiter?: string;
-  extension_header_ids?: string;
-  extension_strikethrough: boolean;
-  extension_superscript: boolean;
-  extension_table: boolean;
-  extension_tagfilter: boolean;
-  extension_tasklist: boolean;
-  parse_default_info_string?: string;
-  parse_smart: boolean;
-  parse_relaxed_tasklist_matching?: boolean;
-  render_escape: boolean;
-  render_full_info_string?: boolean;
-  render_github_pre_lang: boolean;
-  render_hardbreaks: boolean;
-  render_list_style?: "dash" | "plus" | "star";
-  render_unsafe: boolean;
-  render_width: number;
-}
+declare var j: {
+    new (g: any): {
+        __destroy_into_raw(): number;
+        __wbg_ptr: number;
+        free(): void;
+        resolve: any;
+        call(g: any, I: any): any;
+    };
+};
+declare var J: {
+    new (g: any, I: any): {
+        __destroy_into_raw(): number;
+        __wbg_ptr: number;
+        free(): void;
+    };
+};
+declare var X: {
+    new (g: any, I: any, B: any): {
+        __destroy_into_raw(): number;
+        __wbg_ptr: number;
+        free(): void;
+    };
+};
+declare var v: {
+    new (g: any): {
+        __destroy_into_raw(): number;
+        __wbg_ptr: number;
+        free(): void;
+        rewriter: any;
+        call(g: any, I: any): any;
+    };
+};
+declare function ZA(): any;
+declare function q(): any;
+declare function QA(): any;
+declare function $(): any;
+declare function BA(A: any, g: any, I: any, B: any, Z: any, E: any, b: any): any;
+declare function IA(A: any, g: any, I: any, B: any, Z: any, E: any, b: any): any;
+declare function AA(A: any, g: any, I: any, B: any, Z: any, E: any, b: any): any;
+declare function f(A: any, g: any, I: any, B: any, Z: any, E: any, b: any): any;
+declare function gA(A: any, g: any, I: any, B: any, Z: any, E: any, b: any): any;
+declare function GA(A: any, g: any, I: any, B: any, Z: any, E: any, b: any): any;
+declare function CA(A: any, g: any, I: any, B: any, Z: any): any;
+declare function _(): any;
+export { j as BrokenLinkCallback, J as HeadingAdapter, X as SyntaxHighlighterAdapter, v as URLRewriter, ZA as default_extension_options, q as default_options, QA as default_parse_options, $ as default_render_options, BA as format_commonmark, IA as format_html, AA as format_xml, f as markdown_to_commonmark, gA as markdown_to_html, GA as markdown_to_xml, CA as parse_document, _ as version };
