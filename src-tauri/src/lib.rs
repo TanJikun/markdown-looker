@@ -92,19 +92,30 @@ pub fn run() {
     tauri::Builder::default()
         // 1. 注册单实例插件
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // 当用户双击第二个文件时，会触发这里
             if argv.len() > 1 {
                 let path = &argv[1];
                 if path.ends_with(".md") || path.ends_with(".markdown") || path.ends_with(".txt") {
-                    // 把文件路径发给前端（触发新建标签页）
                     let _ = app.emit("new-file-opened", path.clone());
                 }
             }
-            // 将窗口带到前台
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
             }
         }))
+        // ★ 新增 setup：显式设置窗口图标（任务栏 + 标题栏左上角 + Alt+Tab）
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                // 从 bundle.icon 自动解析出的默认图标（Tauri v2 会取 .ico 最佳帧）
+                if let Some(icon) = app.default_window_icon() {
+                    if let Err(e) = window.set_icon(icon.clone()) {
+                        eprintln!("[icon] 设置窗口图标失败: {}", e);
+                    }
+                } else {
+                    eprintln!("[icon] default_window_icon 为空，请检查 tauri.conf.json 的 bundle.icon 是否包含 icons/icon.ico");
+                }
+            }
+            Ok(())
+        })
         // 2. 注册命令
         .invoke_handler(tauri::generate_handler![
             get_initial_file,
