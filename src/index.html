@@ -1058,19 +1058,38 @@
       
       const pos = el.getAttribute('data-sourcepos');
       if (!pos) return;
-      const m = pos.match(/^(\d+):/);
+      
+      const m = pos.match(/^(\d+):(\d+)-(\d+):(\d+)$/);
       if (!m) return;
-      const line = parseInt(m[1], 10) - 1;
-      if (line < 0) return;
+      
+      const startLine = parseInt(m[1], 10) - 1;
+      const endLine = parseInt(m[3], 10) - 1;
       const y = rect.top - bodyTop;
-      raw.push({ line, y });
+      const h = rect.height;
+      
+      if (startLine < 0) return;
+      
+      raw.push({ line: startLine, y });
+      
+      const linesCount = endLine - startLine;
+      if (linesCount > 0) {
+          const maxInsert = Math.min(linesCount, 100);
+          const step = linesCount / maxInsert;
+          for (let i = 1; i <= maxInsert; i++) {
+              raw.push({ 
+                  line: startLine + i * step, 
+                  y: y + h * (i / maxInsert) 
+              });
+          }
+      }
     });
     
     raw.sort((a, b) => a.line - b.line || a.y - b.y);
+    
     const out = [];
     let prevLine = -1, prevY = -Infinity;
     for (const it of raw) {
-      if (it.line <= prevLine) continue;
+      if (it.line < prevLine - 0.01) continue;
       if (it.y < prevY) it.y = prevY;
       out.push(it);
       prevLine = it.line; prevY = it.y;
@@ -1151,7 +1170,12 @@
       return;
     }
     lastAppliedSync = data;
-    setWindowScrollProgrammatic(lineToY(data.line, yMap));
+    const targetY = lineToY(data.line, yMap);
+    
+    let scrollTarget = targetY - window.innerHeight / 2;
+    scrollTarget = Math.max(0, Math.min(getMax(), scrollTarget));
+    setWindowScrollProgrammatic(scrollTarget);
+    
     scheduleSettleRecheck();
   }
 
@@ -1174,8 +1198,12 @@
     const yMap = getYMap();
     if (!yMap || !yMap.length) return;
     const target = lineToY(data.line, yMap);
-    if (Math.abs(target - window.scrollY) > 4) {
-      setWindowScrollProgrammatic(target);
+    
+    let scrollTarget = target - window.innerHeight / 2;
+    scrollTarget = Math.max(0, Math.min(getMax(), scrollTarget));
+    
+    if (Math.abs(scrollTarget - window.scrollY) > 4) {
+      setWindowScrollProgrammatic(scrollTarget);
       if (tries > 1) settleTimers.push(setTimeout(() => recheckSync(tries - 1), 300));
     }
   }
@@ -1197,7 +1225,9 @@
       window.parent.postMessage({ type: 'sync-back', mode: 'ratio', ratio: max > 0 ? y / max : 0 }, '*');
       return;
     }
-    window.parent.postMessage({ type: 'sync-back', mode: 'line', line: yToLine(y, yMap) }, '*');
+    
+    const centerY = y + window.innerHeight / 2;
+    window.parent.postMessage({ type: 'sync-back', mode: 'line', line: yToLine(centerY, yMap) }, '*');
   }
 
   window.addEventListener("message", (e) => {
@@ -1222,7 +1252,6 @@
 
     } else if (d.type === "apply-sync") {
       if (d.refresh) yMapCache = null;
-      if (d.fromLayoutChange && isScrolling) return;
       applySyncData(d.syncData);
     } else if (d.type === "copy-success") {
       const btn = document.querySelector(\`.copy-code-btn[data-id="\${d.id}"]\`);
@@ -1281,7 +1310,10 @@
         return { mode: 'ratio', ratio: maxEditor > 0 ? st / maxEditor : 0 };
       }
       const tops = lt.tops;
-      const c = st - layoutCache.padTop;
+
+      const centerSt = st + editor.clientHeight / 2;
+      const c = centerSt - layoutCache.padTop;
+
       if (c <= 0) return { mode: 'line', line: 0 };
       const lastIdx = tops.length - 1;
       if (c >= tops[lastIdx]) {
@@ -1311,8 +1343,13 @@
       const f = Math.max(0, data.line);
       const i = Math.min(tops.length - 1, Math.floor(f));
       const seg = (i + 1 < tops.length) ? (tops[i + 1] - tops[i]) : Math.max(1, layoutCache.lineHeight);
-      const target = layoutCache.padTop + tops[i] + Math.min(Math.max(f - i, 0), 1) * Math.max(1, seg);
-      if (Math.abs(editor.scrollTop - target) > 1) setEditorScrollProgrammatic(target);
+      const targetY = layoutCache.padTop + tops[i] + Math.min(Math.max(f - i, 0), 1) * Math.max(1, seg);
+
+      let scrollTop = targetY - editor.clientHeight / 2;
+      const maxEditor = Math.max(0, editor.scrollHeight - editor.clientHeight);
+      scrollTop = Math.max(0, Math.min(maxEditor, scrollTop));
+
+      if (Math.abs(editor.scrollTop - scrollTop) > 1) setEditorScrollProgrammatic(scrollTop);
     }
 
     function sendRenderToIframe(payload) {
