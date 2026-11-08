@@ -816,15 +816,16 @@
       </head><body>
 <script>
   let rightRaf = false;
-  let programmaticScroll = -1;
-  let programmaticTimer = null;
   let isScrolling = false;
   let scrollEndTimer = null;
   let yMapCache = null;
   let totalSourceLines = 0;
-  let lastAppliedSync = null;
-  let settleTimers = [];
-  let lastSyncMode = null;
+  
+  const ECHO_LOCK_MS = 80;
+
+  let isProgrammaticPreviewScroll = false;
+  let programmaticPreviewTop = null;
+  let programmaticPreviewTimer = null;
 
   const pendingMath = new Set();
   const pendingMermaid = new Set();
@@ -839,10 +840,11 @@
   function reportLog(msg) { window.parent.postMessage({ type: "log", message: msg }, "*"); }
 
   function setWindowScrollProgrammatic(target) {
-    programmaticScroll = target;
+    isProgrammaticPreviewScroll = true;
+    programmaticPreviewTop = target;
     window.scrollTo(0, target);
-    if (programmaticTimer) clearTimeout(programmaticTimer);
-    programmaticTimer = setTimeout(() => { programmaticScroll = -1; }, 80);
+    if (programmaticPreviewTimer) clearTimeout(programmaticPreviewTimer);
+    programmaticPreviewTimer = setTimeout(() => { isProgrammaticPreviewScroll = false; }, ECHO_LOCK_MS);
   }
 
   function attachCopyButton(pre) {
@@ -906,11 +908,11 @@
   let layoutChangeTimer = null;
   function resendSyncAfterLayoutChange() {
     yMapCache = null;
-    if (isScrolling || programmaticScroll !== -1) return;
+    if (isScrolling || isProgrammaticPreviewScroll) return;
     if (layoutChangeTimer) clearTimeout(layoutChangeTimer);
     layoutChangeTimer = setTimeout(() => {
       layoutChangeTimer = null;
-      if (isScrolling || programmaticScroll !== -1) return;
+      if (isScrolling || isProgrammaticPreviewScroll) return;
       window.parent.postMessage({ type: 'layout-changed' }, '*');
     }, 150);
   }
@@ -1017,7 +1019,7 @@
 
   window.addEventListener('resize', () => {
     yMapCache = null;
-    if (isScrolling || programmaticScroll !== -1) return;
+    if (isScrolling || isProgrammaticPreviewScroll) return;
     window.parent.postMessage({ type: 'layout-changed' }, '*');
   });
 
@@ -1032,11 +1034,7 @@
     roRaf = requestAnimationFrame(() => {
       roRaf = null;
       yMapCache = null;
-      if (lastSyncMode === 'bottom') {
-        setWindowScrollProgrammatic(getMax());
-      } else if (lastSyncMode === 'top') {
-        setWindowScrollProgrammatic(0);
-      } else {
+      if (!isProgrammaticPreviewScroll) {
         const max = getMax();
         if (max - window.scrollY <= 4) setWindowScrollProgrammatic(max);
       }
@@ -1045,189 +1043,134 @@
   });
   bodyObserver.observe(document.body);
 
-  const ANCHOR_SEL = 'p[data-sourcepos],h1[data-sourcepos],h2[data-sourcepos],h3[data-sourcepos],h4[data-sourcepos],h5[data-sourcepos],h6[data-sourcepos],ul[data-sourcepos],ol[data-sourcepos],li[data-sourcepos],blockquote[data-sourcepos],pre[data-sourcepos],table[data-sourcepos],hr[data-sourcepos],details[data-sourcepos],div.markdown-alert[data-sourcepos],div.mermaid-wrapper[data-sourcepos],div.math-display[data-sourcepos]';
+  function isScrollAnchorElement(el) {
+    return !el.closest('details:not([open])');
+  }
 
-  function getYMap() {
-    if (yMapCache) return yMapCache;
-    const raw = [];
-    const bodyTop = document.body.getBoundingClientRect().top;
-    
-    document.querySelectorAll(ANCHOR_SEL).forEach(el => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return;
-      
-      const pos = el.getAttribute('data-sourcepos');
-      if (!pos) return;
-      
-      const m = pos.match(/^(\d+):(\d+)-(\d+):(\d+)$/);
-      if (!m) return;
-      
-      const startLine = parseInt(m[1], 10) - 1;
-      const endLine = parseInt(m[3], 10) - 1;
-      const y = rect.top - bodyTop;
-      const h = rect.height;
-      
-      if (startLine < 0) return;
-      
-      raw.push({ line: startLine, y });
-      
-      const linesCount = endLine - startLine;
-      if (linesCount > 0) {
-          const maxInsert = Math.min(linesCount, 100);
-          const step = linesCount / maxInsert;
-          for (let i = 1; i <= maxInsert; i++) {
-              raw.push({ 
-                  line: startLine + i * step, 
-                  y: y + h * (i / maxInsert) 
-              });
-          }
+  function clampMonotonic(anchors, key) {
+    if (!anchors || !anchors.length) return anchors;
+    let prev = -Infinity;
+    for (const a of anchors) {
+      const v = Number(a[key]);
+      if (Number.isFinite(v)) {
+        if (v < prev) a[key] = prev;
+        else prev = v;
       }
+    }
+    return anchors;
+  }
+
+  function findAnchorSegment(value, key, anchors = []) {
+    if (!anchors.length) return null;
+    if (value <= anchors[0][key]) return { a: anchors[0], b: anchors[Math.min(1, anchors.length - 1)], t: 0 };
+    let lo = 0;
+    let hi = anchors.length - 1;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi + 1) / 2);
+      if (anchors[mid][key] <= value) lo = mid;
+      else hi = mid - 1;
+    }
+    const a = anchors[lo];
+    const b = anchors[Math.min(lo + 1, anchors.length - 1)];
+    if (lo === anchors.length - 1 && value >= a[key]) return { a, b: a, t: 1 };
+    if (a[key] === b[key]) return { a, b, t: 0 };
+    const t = (value - a[key]) / (b[key] - a[key]);
+    return { a, b, t: Math.max(0, Math.min(1, t)) };
+  }
+
+  function rebuildYMap() {
+    if (!document.body) return;
+    const raw = [];
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
+    
+    const els = document.querySelectorAll('[data-sourcepos]');
+    els.forEach(el => {
+        if (!isScrollAnchorElement(el)) return;
+        
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
+        
+        const pos = el.getAttribute('data-sourcepos');
+        if (!pos) return;
+        
+        const m = pos.match(/^(\d+):/);
+        if (!m) return;
+        const line = parseInt(m[1], 10) - 1;
+        if (line < 0) return;
+        
+        const y = rect.top + scrollTop;
+        raw.push({ line, y });
     });
     
     raw.sort((a, b) => a.line - b.line || a.y - b.y);
     
     const out = [];
-    let prevLine = -1, prevY = -Infinity;
+    let prevLine = -1;
+    let prevY = -Infinity;
     for (const it of raw) {
-      if (it.line < prevLine - 0.01) continue;
-      if (it.y < prevY) it.y = prevY;
-      out.push(it);
-      prevLine = it.line; prevY = it.y;
+        if (it.line <= prevLine) continue;
+        if (it.y < prevY) it.y = prevY;
+        out.push(it);
+        prevLine = it.line;
+        prevY = it.y;
     }
+    
+    const maxY = getMax();
+    if (out.length > 0) {
+        out.push({ line: totalSourceLines, y: maxY });
+    } else {
+        out.push({ line: 0, y: 0 }, { line: totalSourceLines, y: maxY });
+    }
+    
+    clampMonotonic(out, 'y');
     yMapCache = out;
-    return out;
   }
 
-  function lineToY(f, yMap) {
-    if (!yMap.length) return 0;
-    if (f <= 0) return 0;
-    const maxY = getMax();
-    const first = yMap[0];
-    if (f <= first.line) {
-      if (first.line > 0 && first.y > 0) return Math.max(0, Math.min(maxY, first.y * (f / first.line)));
-      return Math.max(0, Math.min(maxY, first.y));
-    }
-    const last = yMap[yMap.length - 1];
-    if (f >= last.line) {
-      const span = Math.max(1, totalSourceLines - 1 - last.line);
-      const tail = Math.max(0, maxY - last.y);
-      return Math.min(maxY, last.y + tail * Math.min(1, (f - last.line) / span));
-    }
-    let lo = 0, hi = yMap.length - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (yMap[mid].line <= f) lo = mid; else hi = mid;
-    }
-    const a = yMap[lo], b = yMap[hi];
-    if (b.line === a.line) return Math.min(maxY, a.y);
-    return Math.min(maxY, a.y + (b.y - a.y) * ((f - a.line) / (b.line - a.line)));
-  }
-
-  function yToLine(y, yMap) {
-    if (!yMap.length) return 0;
-    if (y <= 0) return 0;
-    const first = yMap[0];
-    if (y <= first.y) {
-      if (first.y > 0) return first.line * (y / first.y);
-      return first.line;
-    }
-    const last = yMap[yMap.length - 1];
-    const maxY = getMax();
-    if (y >= last.y) {
-      const span = Math.max(1, totalSourceLines - 1 - last.line);
-      const tail = Math.max(1, maxY - last.y);
-      return last.line + span * Math.min(1, (y - last.y) / tail);
-    }
-    let lo = 0, hi = yMap.length - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (yMap[mid].y <= y) lo = mid; else hi = mid;
-    }
-    const a = yMap[lo], b = yMap[hi];
-    if (b.y === a.y) return a.line;
-    return a.line + (b.line - a.line) * ((y - a.y) / (b.y - a.y));
+  function getYMap() {
+    if (!yMapCache) rebuildYMap();
+    return yMapCache;
   }
 
   function applySyncData(data) {
     if (!data) return;
-    yMapCache = null;
-    lastSyncMode = data.mode;
-    if (data.mode === 'top') { setWindowScrollProgrammatic(0); return; }
-    if (data.mode === 'bottom') { setWindowScrollProgrammatic(getMax()); return; }
-    if (data.mode === 'ratio') {
-      const max = getMax();
-      if (max > 0) setWindowScrollProgrammatic(data.ratio * max);
-      return;
+    
+    if (data.mode === 'bottom') {
+        setWindowScrollProgrammatic(getMax());
+        return;
     }
     if (typeof data.line !== 'number') return;
+    
     const yMap = getYMap();
-    if (!yMap.length) {
-      const max = getMax();
-      if (max > 0) {
-        const denom = Math.max(1, totalSourceLines - 1);
-        setWindowScrollProgrammatic(Math.max(0, Math.min(1, data.line / denom)) * max);
-      }
-      return;
-    }
-    lastAppliedSync = data;
-    const targetY = lineToY(data.line, yMap);
+    if (!yMap.length) return;
     
-    let scrollTarget = targetY - window.innerHeight / 2;
-    scrollTarget = Math.max(0, Math.min(getMax(), scrollTarget));
-    setWindowScrollProgrammatic(scrollTarget);
+    const seg = findAnchorSegment(data.line, 'line', yMap);
+    if (!seg) return;
     
-    scheduleSettleRecheck();
-  }
-
-  function scheduleSettleRecheck() {
-    settleTimers.forEach(clearTimeout);
-    settleTimers = [];
-    settleTimers.push(setTimeout(() => recheckSync(3), 150));
-    settleTimers.push(setTimeout(() => recheckSync(2), 500));
-  }
-
-  function recheckSync(tries) {
-    if (tries <= 0) return;
-    if (isScrolling || programmaticScroll !== -1) {
-      settleTimers.push(setTimeout(() => recheckSync(tries - 1), 250));
-      return;
-    }
-    const data = lastAppliedSync;
-    if (!data || data.mode !== 'line') return;
-    yMapCache = null;
-    const yMap = getYMap();
-    if (!yMap || !yMap.length) return;
-    const target = lineToY(data.line, yMap);
+    let targetY = seg.a.y + seg.t * (seg.b.y - seg.a.y);
+    targetY = Math.max(0, Math.min(getMax(), targetY));
     
-    let scrollTarget = target - window.innerHeight / 2;
-    scrollTarget = Math.max(0, Math.min(getMax(), scrollTarget));
-    
-    if (Math.abs(scrollTarget - window.scrollY) > 4) {
-      setWindowScrollProgrammatic(scrollTarget);
-      if (tries > 1) settleTimers.push(setTimeout(() => recheckSync(tries - 1), 300));
+    if (Math.abs(window.scrollY - targetY) > 1) {
+        setWindowScrollProgrammatic(targetY);
     }
   }
 
   function sendSyncToParent() {
-    yMapCache = null;
+    if (isProgrammaticPreviewScroll && Math.abs(window.scrollY - programmaticPreviewTop) < 2) return;
+    
     const y = window.scrollY;
     const max = getMax();
-    if (y <= 1) {
-      window.parent.postMessage({ type: 'sync-back', mode: 'top' }, '*');
-      return;
-    }
-    if (max - y <= 2) {
-      window.parent.postMessage({ type: 'sync-back', mode: 'bottom' }, '*');
-      return;
-    }
-    const yMap = getYMap();
-    if (!yMap || !yMap.length) {
-      window.parent.postMessage({ type: 'sync-back', mode: 'ratio', ratio: max > 0 ? y / max : 0 }, '*');
-      return;
-    }
     
-    const centerY = y + window.innerHeight / 2;
-    window.parent.postMessage({ type: 'sync-back', mode: 'line', line: yToLine(centerY, yMap) }, '*');
+    if (y <= 1) { window.parent.postMessage({ type: 'sync-back', line: 0 }, '*'); return; }
+    if (max - y <= 2) { window.parent.postMessage({ type: 'sync-back', mode: 'bottom' }, '*'); return; }
+    
+    const yMap = getYMap();
+    if (!yMap || !yMap.length) return;
+    
+    const seg = findAnchorSegment(y, 'y', yMap);
+    if (!seg) return;
+    
+    const line = seg.a.line + seg.t * (seg.b.line - seg.a.line);
+    window.parent.postMessage({ type: 'sync-back', line }, '*');
   }
 
   window.addEventListener("message", (e) => {
@@ -1237,7 +1180,6 @@
     if (d.type === "render") {
       totalSourceLines = d.totalLines || 0;
       yMapCache = null;
-      lastAppliedSync = null;
       document.body.innerHTML = d.html;
 
       convertCodeBlocks();
@@ -1277,9 +1219,10 @@
   });
 
   window.addEventListener("scroll", () => {
-    if (programmaticScroll !== -1) return;
+    if (isProgrammaticPreviewScroll) {
+        if (Math.abs(window.scrollY - programmaticPreviewTop) < 2) return;
+    }
 
-    lastSyncMode = null;
     isScrolling = true;
     clearTimeout(scrollEndTimer);
     scrollEndTimer = setTimeout(() => {
@@ -1302,54 +1245,52 @@
     function computeEditorSyncData() {
       const st = editor.scrollTop;
       const maxEditor = Math.max(0, editor.scrollHeight - editor.clientHeight);
-      if (st <= 1) return { mode: 'top' };
+      if (st <= 1) return { line: 0 };
       if (maxEditor - st <= 2) return { mode: 'bottom' };
 
       const lt = mdState.lineTops;
-      if (!lt || mdState.lines.length === 0) {
-        return { mode: 'ratio', ratio: maxEditor > 0 ? st / maxEditor : 0 };
-      }
+      if (!lt || !lt.tops.length) return { line: 0 };
       const tops = lt.tops;
 
-      const centerSt = st + editor.clientHeight / 2;
-      const c = centerSt - layoutCache.padTop;
+      const c = Math.max(0, st - layoutCache.padTop);
 
-      if (c <= 0) return { mode: 'line', line: 0 };
+      if (c <= tops[0]) return { line: 0 };
       const lastIdx = tops.length - 1;
-      if (c >= tops[lastIdx]) {
-        const frac = (c - tops[lastIdx]) / Math.max(1, layoutCache.lineHeight);
-        return { mode: 'line', line: lastIdx + Math.min(1, Math.max(0, frac)) };
-      }
+      if (c >= tops[lastIdx]) return { line: lastIdx };
+
       let lo = 0, hi = lastIdx;
       while (hi - lo > 1) {
         const mid = (lo + hi) >> 1;
         if (tops[mid] <= c) lo = mid; else hi = mid;
       }
-      const seg = tops[lo + 1] - tops[lo];
-      return { mode: 'line', line: lo + (seg > 0 ? (c - tops[lo]) / seg : 0) };
+      const a = tops[lo], b = tops[hi];
+      const t = (c - a) / Math.max(1, b - a);
+      return { line: lo + t };
     }
 
     function applySyncToEditor(data) {
       if (!data) return;
-      if (data.mode === 'top') { setEditorScrollProgrammatic(0); return; }
       if (data.mode === 'bottom') { setEditorScrollProgrammatic(editor.scrollHeight); return; }
-      if (data.mode === 'ratio') {
-        const maxEditor = Math.max(0, editor.scrollHeight - editor.clientHeight);
-        if (maxEditor > 0) setEditorScrollProgrammatic(data.ratio * maxEditor);
-        return;
-      }
-      if (data.mode !== 'line' || typeof data.line !== 'number' || !mdState.lineTops) return;
-      const tops = mdState.lineTops.tops;
-      const f = Math.max(0, data.line);
-      const i = Math.min(tops.length - 1, Math.floor(f));
-      const seg = (i + 1 < tops.length) ? (tops[i + 1] - tops[i]) : Math.max(1, layoutCache.lineHeight);
-      const targetY = layoutCache.padTop + tops[i] + Math.min(Math.max(f - i, 0), 1) * Math.max(1, seg);
+      if (typeof data.line !== 'number') return;
 
-      let scrollTop = targetY - editor.clientHeight / 2;
+      const lt = mdState.lineTops;
+      if (!lt || !lt.tops.length) return;
+      const tops = lt.tops;
+
+      const f = Math.max(0, Math.min(tops.length - 1, data.line));
+      const i = Math.floor(f);
+      const t = f - i;
+
+      const a = tops[i];
+      const b = (i + 1 < tops.length) ? tops[i + 1] : a + layoutCache.lineHeight;
+
+      let scrollTop = layoutCache.padTop + a + t * (b - a);
       const maxEditor = Math.max(0, editor.scrollHeight - editor.clientHeight);
       scrollTop = Math.max(0, Math.min(maxEditor, scrollTop));
 
-      if (Math.abs(editor.scrollTop - scrollTop) > 1) setEditorScrollProgrammatic(scrollTop);
+      if (Math.abs(editor.scrollTop - scrollTop) > 1) {
+        setEditorScrollProgrammatic(scrollTop);
+      }
     }
 
     function sendRenderToIframe(payload) {
@@ -1515,19 +1456,21 @@
       renderTimer = setTimeout(() => renderPreview().catch(e => log(`[render] 未捕获: ${e.message}`)), delay);
     });
 
-    let programmaticEditorScroll = -1;
+    let isProgrammaticEditorScroll = false;
+    let programmaticEditorTop = null;
     let programmaticEditorTimer = null;
     let leftRaf = false;
 
     function setEditorScrollProgrammatic(target) {
-      programmaticEditorScroll = target;
+      isProgrammaticEditorScroll = true;
+      programmaticEditorTop = target;
       editor.scrollTop = target;
       if (programmaticEditorTimer) clearTimeout(programmaticEditorTimer);
-      programmaticEditorTimer = setTimeout(() => { programmaticEditorScroll = -1; }, 80);
+      programmaticEditorTimer = setTimeout(() => { isProgrammaticEditorScroll = false; }, 80);
     }
 
     editor.addEventListener("scroll", () => {
-      if (programmaticEditorScroll !== -1) return;
+      if (isProgrammaticEditorScroll && Math.abs(editor.scrollTop - programmaticEditorTop) < 2) return;
       if (leftRaf) return;
       leftRaf = true;
       requestAnimationFrame(() => {
