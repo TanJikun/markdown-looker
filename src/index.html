@@ -346,7 +346,6 @@
       opacity: 0.8;
     }
 
-    /* ===== 新增：Mermaid 全屏查看（父窗口层，覆盖整个应用） ===== */
     #mermaid-fs-overlay {
       position: fixed;
       inset: 0;
@@ -445,7 +444,6 @@
   <script type="module">
     import { markdownToHTML } from "./comrak/index.js";
 
-    /* ================= 日志 ================= */
     let logBuffer = [];
     let logFlushTimer = null;
     function log(message) {
@@ -465,7 +463,6 @@
       try { window.__TAURI__.core.invoke('append_log', { message: text }).catch(() => { }); } catch (_) { }
     }
 
-    /* ================= 主题 ================= */
     const THEMES = {
       dark: {
         '--color-bg': '#0D1117', '--color-text': '#e6edf3', '--color-muted': '#8b949e',
@@ -533,7 +530,6 @@
       .markdown-alert-warning .markdown-alert-title { color: var(--color-alert-warning); }
       .markdown-alert-caution { border-left-color: var(--color-alert-caution); }
       .markdown-alert-caution .markdown-alert-title { color: var(--color-alert-caution); }
-      /* ===== Mermaid 流程图容器（限高 200 + 边框，UI 与代码块一致） ===== */
       .mermaid-wrapper { position: relative; margin: 16px 0; }
       .mermaid-wrapper .mermaid {
         margin: 0;
@@ -576,7 +572,6 @@
       .math-display { text-align: center; margin: 16px 0; overflow-x: auto; overflow-y: hidden; }
     `;
 
-    /* ================= DOM ================= */
     const editor = document.querySelector("#editor");
     const preview = document.querySelector("#preview");
     const tabsContainer = document.querySelector("#tabs-container");
@@ -587,7 +582,6 @@
     const themeLabel = document.querySelector("#theme-label");
     const isTauri = window.__TAURI_INTERNALS__ !== undefined || window.__TAURI__ !== undefined;
 
-    /* ================= Mermaid 全屏查看（父窗口） ================= */
     let mermaidFsOverlay = null;
     function closeMermaidFullscreen() {
       if (mermaidFsOverlay) {
@@ -621,7 +615,6 @@
       document.addEventListener('keydown', mermaidFsEscHandler);
     }
 
-    /* ================= Worker ================= */
     let mdWorker = null;
     let mdWorkerReady = false;
     let mdWorkerFailed = false;
@@ -702,7 +695,6 @@
       });
     }
 
-    /* ================= 左侧逐行视觉位置测量（DOM 镜像，精确） ================= */
     const editorMirror = document.createElement('div');
     editorMirror.style.cssText =
       'position:fixed;left:-99999px;top:0;visibility:hidden;' +
@@ -737,7 +729,6 @@
         return null;
       }
     }
-
 
     let layoutCache = { lineHeight: 22.4, charsPerLine: 90, padTop: 24, valid: false };
     function measureEditorLayout() {
@@ -781,7 +772,6 @@
         rows[i] = cur;
         cur += Math.max(1, Math.ceil(widthOf(lines[i]) / charsPerLine));
       }
-      // 用 editor 实际高度做全局校准，并把比例烘焙进像素坐标
       const actualTotal = Math.max(1, (editor.scrollHeight - 2 * layoutCache.padTop) / lineHeight);
       const scale = actualTotal / Math.max(1, cur);
       const tops = new Array(lines.length);
@@ -789,7 +779,6 @@
       return { tops, exact: false };
     }
 
-    /* ================= iframe 核心 ================= */
     let previewReady = false;
     let pendingRender = null;
     let isCreatingPreview = false;
@@ -835,6 +824,7 @@
   let totalSourceLines = 0;
   let lastAppliedSync = null;
   let settleTimers = [];
+  let lastSyncMode = null;
 
   const pendingMath = new Set();
   const pendingMermaid = new Set();
@@ -845,7 +835,7 @@
   let mermaidObserver = null;
   let btnCounter = 0;
 
-  function getMax() { return document.documentElement.scrollHeight - window.innerHeight; }
+  function getMax() { return Math.max(0, document.documentElement.scrollHeight - window.innerHeight); }
   function reportLog(msg) { window.parent.postMessage({ type: "log", message: msg }, "*"); }
 
   function setWindowScrollProgrammatic(target) {
@@ -882,7 +872,6 @@
     wrapper.appendChild(btn);
   }
 
-  /* ===== 新增：Mermaid 全屏按钮（在 wrapper 右上角，带边框） ===== */
   function attachMermaidExpand(wrapper, div) {
     if (!wrapper || wrapper.dataset.expandBtnDone) return;
     wrapper.dataset.expandBtnDone = '1';
@@ -914,10 +903,16 @@
     requestAnimationFrame(processBatch);
   }
 
+  let layoutChangeTimer = null;
   function resendSyncAfterLayoutChange() {
-    if (isScrolling || programmaticScroll !== -1) return;
     yMapCache = null;
-    sendSyncToParent();
+    if (isScrolling || programmaticScroll !== -1) return;
+    if (layoutChangeTimer) clearTimeout(layoutChangeTimer);
+    layoutChangeTimer = setTimeout(() => {
+      layoutChangeTimer = null;
+      if (isScrolling || programmaticScroll !== -1) return;
+      window.parent.postMessage({ type: 'layout-changed' }, '*');
+    }, 150);
   }
 
   function processBatch() {
@@ -935,7 +930,6 @@
           mermaid.initialize({ startOnLoad: false, theme: (bg === '#FFFFFF' || bg === '#FFF') ? 'default' : 'dark' });
           mermaid.run({ nodes: [el] })
             .then(() => {
-              // 渲染完成后挂载全屏按钮（wrapper 在 convertCodeBlocks 中创建）
               const wrapper = el.parentElement && el.parentElement.classList.contains('mermaid-wrapper') ? el.parentElement : null;
               if (wrapper) attachMermaidExpand(wrapper, el);
             })
@@ -982,12 +976,12 @@
     document.querySelectorAll('pre[lang="mermaid"] > code, pre > code.language-mermaid').forEach(code => {
       const pre = code.parentElement;
       if (!pre || !pre.parentNode) return;
-      // 新增：外包一层 wrapper，用于按钮定位 + 边框限高
       const wrapper = document.createElement('div');
       wrapper.className = 'mermaid-wrapper';
       const div = document.createElement('div');
       div.className = 'mermaid';
       const spos = pre.getAttribute('data-sourcepos');
+      if (spos) wrapper.setAttribute('data-sourcepos', spos);
       if (spos) div.setAttribute('data-sourcepos', spos);
       div.setAttribute('data-mermaid-code', code.textContent);
       div.textContent = code.textContent;
@@ -1013,7 +1007,6 @@
     document.querySelectorAll('.mermaid:not([data-mermaid-done])').forEach(n => mermaidObserver.observe(n));
   }
 
-    /* 图片/视频加载会改变高度，重建锚点避免同步漂移 */
   document.addEventListener('load', (e) => {
     const t = e.target;
     if (t && (t.tagName === 'IMG' || t.tagName === 'VIDEO')) {
@@ -1022,39 +1015,84 @@
     }
   }, true);
 
-  /* ============ 行号 <-> 像素映射（基于 data-sourcepos 稠密锚点） ============ */
-  const ANCHOR_SEL = 'p[data-sourcepos],h1[data-sourcepos],h2[data-sourcepos],h3[data-sourcepos],h4[data-sourcepos],h5[data-sourcepos],h6[data-sourcepos],ul[data-sourcepos],ol[data-sourcepos],li[data-sourcepos],blockquote[data-sourcepos],pre[data-sourcepos],table[data-sourcepos],tr[data-sourcepos],td[data-sourcepos],th[data-sourcepos],hr[data-sourcepos],div[data-sourcepos],details[data-sourcepos]';
+  window.addEventListener('resize', () => {
+    yMapCache = null;
+    if (isScrolling || programmaticScroll !== -1) return;
+    window.parent.postMessage({ type: 'layout-changed' }, '*');
+  });
+
+  let roRaf = null;
+  let lastBodyHeight = 0;
+  const bodyObserver = new ResizeObserver(() => {
+    const h = document.body.scrollHeight;
+    if (Math.abs(h - lastBodyHeight) < 2) return;
+    lastBodyHeight = h;
+    yMapCache = null;
+    if (roRaf) return;
+    roRaf = requestAnimationFrame(() => {
+      roRaf = null;
+      yMapCache = null;
+      if (lastSyncMode === 'bottom') {
+        setWindowScrollProgrammatic(getMax());
+      } else if (lastSyncMode === 'top') {
+        setWindowScrollProgrammatic(0);
+      } else {
+        const max = getMax();
+        if (max - window.scrollY <= 4) setWindowScrollProgrammatic(max);
+      }
+      window.parent.postMessage({ type: 'layout-changed' }, '*');
+    });
+  });
+  bodyObserver.observe(document.body);
+
+  const ANCHOR_SEL = 'p[data-sourcepos],h1[data-sourcepos],h2[data-sourcepos],h3[data-sourcepos],h4[data-sourcepos],h5[data-sourcepos],h6[data-sourcepos],ul[data-sourcepos],ol[data-sourcepos],li[data-sourcepos],blockquote[data-sourcepos],pre[data-sourcepos],table[data-sourcepos],hr[data-sourcepos],details[data-sourcepos],div.markdown-alert[data-sourcepos],div.mermaid-wrapper[data-sourcepos],div.math-display[data-sourcepos]';
 
   function getYMap() {
     if (yMapCache) return yMapCache;
-    const map = new Map();
-    const scrollY = window.scrollY;
+    const raw = [];
+    const bodyTop = document.body.getBoundingClientRect().top;
+    
     document.querySelectorAll(ANCHOR_SEL).forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+      
       const pos = el.getAttribute('data-sourcepos');
       if (!pos) return;
-      const match = pos.match(/^(\d+):/);
-      if (!match) return;
-      const line = parseInt(match[1], 10) - 1;
+      const m = pos.match(/^(\d+):/);
+      if (!m) return;
+      const line = parseInt(m[1], 10) - 1;
       if (line < 0) return;
-      const y = el.getBoundingClientRect().top + scrollY;
-      if (!map.has(line) || y < map.get(line)) map.set(line, y);
+      const y = rect.top - bodyTop;
+      raw.push({ line, y });
     });
-    const arr = Array.from(map.entries()).map(p => ({ line: p[0], y: p[1] })).sort((a, b) => a.line - b.line);
-    yMapCache = arr;
-    return arr;
+    
+    raw.sort((a, b) => a.line - b.line || a.y - b.y);
+    const out = [];
+    let prevLine = -1, prevY = -Infinity;
+    for (const it of raw) {
+      if (it.line <= prevLine) continue;
+      if (it.y < prevY) it.y = prevY;
+      out.push(it);
+      prevLine = it.line; prevY = it.y;
+    }
+    yMapCache = out;
+    return out;
   }
 
   function lineToY(f, yMap) {
-    const maxY = document.documentElement.scrollHeight;
-    if (f <= yMap[0].line) {
-      if (yMap[0].line > 0 && yMap[0].y > 0) return yMap[0].y * (f / yMap[0].line);
-      return yMap[0].y;
+    if (!yMap.length) return 0;
+    if (f <= 0) return 0;
+    const maxY = getMax();
+    const first = yMap[0];
+    if (f <= first.line) {
+      if (first.line > 0 && first.y > 0) return Math.max(0, Math.min(maxY, first.y * (f / first.line)));
+      return Math.max(0, Math.min(maxY, first.y));
     }
     const last = yMap[yMap.length - 1];
     if (f >= last.line) {
-      const span = totalSourceLines - 1 - last.line;
-      if (span > 0 && maxY > last.y) return last.y + (maxY - last.y) * Math.min(1, (f - last.line) / span);
-      return last.y;
+      const span = Math.max(1, totalSourceLines - 1 - last.line);
+      const tail = Math.max(0, maxY - last.y);
+      return Math.min(maxY, last.y + tail * Math.min(1, (f - last.line) / span));
     }
     let lo = 0, hi = yMap.length - 1;
     while (hi - lo > 1) {
@@ -1062,20 +1100,24 @@
       if (yMap[mid].line <= f) lo = mid; else hi = mid;
     }
     const a = yMap[lo], b = yMap[hi];
-    if (b.line === a.line) return a.y;
-    return a.y + (b.y - a.y) * ((f - a.line) / (b.line - a.line));
+    if (b.line === a.line) return Math.min(maxY, a.y);
+    return Math.min(maxY, a.y + (b.y - a.y) * ((f - a.line) / (b.line - a.line)));
   }
 
   function yToLine(y, yMap) {
-    if (y <= yMap[0].y) {
-      if (yMap[0].y > 0) return yMap[0].line * (y / yMap[0].y);
-      return yMap[0].line;
+    if (!yMap.length) return 0;
+    if (y <= 0) return 0;
+    const first = yMap[0];
+    if (y <= first.y) {
+      if (first.y > 0) return first.line * (y / first.y);
+      return first.line;
     }
     const last = yMap[yMap.length - 1];
-    const maxY = document.documentElement.scrollHeight;
+    const maxY = getMax();
     if (y >= last.y) {
       const span = Math.max(1, totalSourceLines - 1 - last.line);
-      return last.line + span * Math.min(1, (y - last.y) / Math.max(1, maxY - last.y));
+      const tail = Math.max(1, maxY - last.y);
+      return last.line + span * Math.min(1, (y - last.y) / tail);
     }
     let lo = 0, hi = yMap.length - 1;
     while (hi - lo > 1) {
@@ -1089,6 +1131,10 @@
 
   function applySyncData(data) {
     if (!data) return;
+    yMapCache = null;
+    lastSyncMode = data.mode;
+    if (data.mode === 'top') { setWindowScrollProgrammatic(0); return; }
+    if (data.mode === 'bottom') { setWindowScrollProgrammatic(getMax()); return; }
     if (data.mode === 'ratio') {
       const max = getMax();
       if (max > 0) setWindowScrollProgrammatic(data.ratio * max);
@@ -1135,10 +1181,19 @@
   }
 
   function sendSyncToParent() {
+    yMapCache = null;
     const y = window.scrollY;
+    const max = getMax();
+    if (y <= 1) {
+      window.parent.postMessage({ type: 'sync-back', mode: 'top' }, '*');
+      return;
+    }
+    if (max - y <= 2) {
+      window.parent.postMessage({ type: 'sync-back', mode: 'bottom' }, '*');
+      return;
+    }
     const yMap = getYMap();
     if (!yMap || !yMap.length) {
-      const max = getMax();
       window.parent.postMessage({ type: 'sync-back', mode: 'ratio', ratio: max > 0 ? y / max : 0 }, '*');
       return;
     }
@@ -1166,6 +1221,8 @@
       pendingMermaid.clear();
 
     } else if (d.type === "apply-sync") {
+      if (d.refresh) yMapCache = null;
+      if (d.fromLayoutChange && isScrolling) return;
       applySyncData(d.syncData);
     } else if (d.type === "copy-success") {
       const btn = document.querySelector(\`.copy-code-btn[data-id="\${d.id}"]\`);
@@ -1192,12 +1249,14 @@
 
   window.addEventListener("scroll", () => {
     if (programmaticScroll !== -1) return;
+
+    lastSyncMode = null;
     isScrolling = true;
     clearTimeout(scrollEndTimer);
     scrollEndTimer = setTimeout(() => {
       isScrolling = false;
-      yMapCache = null;      // 滚动结束后重建锚点（content-visibility 揭示了真实高度）
-      sendSyncToParent();    // 用新锚点向左侧做一次精校
+      yMapCache = null;
+      sendSyncToParent();
       scheduleProcess();
     }, 100);
 
@@ -1211,15 +1270,18 @@
 <\/script></body></html>`;
     }
 
-    /* ================= 同步计算 ================= */
     function computeEditorSyncData() {
+      const st = editor.scrollTop;
+      const maxEditor = Math.max(0, editor.scrollHeight - editor.clientHeight);
+      if (st <= 1) return { mode: 'top' };
+      if (maxEditor - st <= 2) return { mode: 'bottom' };
+
       const lt = mdState.lineTops;
       if (!lt || mdState.lines.length === 0) {
-        const maxEditor = editor.scrollHeight - editor.clientHeight;
-        return { mode: 'ratio', ratio: maxEditor > 0 ? editor.scrollTop / maxEditor : 0 };
+        return { mode: 'ratio', ratio: maxEditor > 0 ? st / maxEditor : 0 };
       }
       const tops = lt.tops;
-      const c = editor.scrollTop - layoutCache.padTop;
+      const c = st - layoutCache.padTop;
       if (c <= 0) return { mode: 'line', line: 0 };
       const lastIdx = tops.length - 1;
       if (c >= tops[lastIdx]) {
@@ -1237,13 +1299,14 @@
 
     function applySyncToEditor(data) {
       if (!data) return;
-      if (data.mode !== 'line' || typeof data.line !== 'number' || !mdState.lineTops) {
-        if (data.mode === 'ratio') {
-          const maxEditor = editor.scrollHeight - editor.clientHeight;
-          if (maxEditor > 0) setEditorScrollProgrammatic(data.ratio * maxEditor);
-        }
+      if (data.mode === 'top') { setEditorScrollProgrammatic(0); return; }
+      if (data.mode === 'bottom') { setEditorScrollProgrammatic(editor.scrollHeight); return; }
+      if (data.mode === 'ratio') {
+        const maxEditor = Math.max(0, editor.scrollHeight - editor.clientHeight);
+        if (maxEditor > 0) setEditorScrollProgrammatic(data.ratio * maxEditor);
         return;
       }
+      if (data.mode !== 'line' || typeof data.line !== 'number' || !mdState.lineTops) return;
       const tops = mdState.lineTops.tops;
       const f = Math.max(0, data.line);
       const i = Math.min(tops.length - 1, Math.floor(f));
@@ -1298,7 +1361,6 @@
       if (mySeq !== renderSeq) return;
       let html = result.html;
 
-      // 旧版 comrak（无原生 alerts）的后处理；新版原生输出 div.markdown-alert，此正则不会命中
       if (html.indexOf('[!') !== -1) {
         const alertRegex = /<blockquote([^>]*)>\s*<p[^>]*>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([\s\S]*?)<\/p>([\s\S]*?)<\/blockquote>/gi;
         html = html.replace(alertRegex, (match, bqAttrs, type, firstLine, rest) => {
@@ -1319,7 +1381,6 @@
       });
     }
 
-    /* ================= UI 逻辑 ================= */
     let tabs = [];
     let activeTabId = null;
     let tabCounter = 0;
@@ -1443,8 +1504,9 @@
     window.addEventListener("message", (e) => {
       const data = e.data;
       if (!data) return;
-      if (data.type === 'sync-back') applySyncToEditor(data);
-      else if (data.type === "copy-code") {
+      if (data.type === 'sync-back') {
+        applySyncToEditor(data);
+      } else if (data.type === "copy-code") {
         navigator.clipboard.writeText(data.text).then(() => {
           if (preview.contentWindow) preview.contentWindow.postMessage({ type: "copy-success", id: data.id }, "*");
         }).catch(err => {
@@ -1456,9 +1518,13 @@
         });
       } else if (data.type === "log") log(data.message);
       else if (data.type === 'open-mermaid-fullscreen') showMermaidFullscreen(data.svg);
+      else if (data.type === 'layout-changed') {
+        if (preview.contentWindow) {
+          preview.contentWindow.postMessage({ type: 'apply-sync', refresh: true, fromLayoutChange: true, syncData: computeEditorSyncData() }, '*');
+        }
+      }
     });
 
-    /* ================= 主题 ================= */
     let currentTheme = 'system';
     function resolveTheme(theme) { return theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme; }
 
@@ -1493,7 +1559,6 @@
       if (currentTheme === 'system') applyTheme('system', false);
     });
 
-    /* ================= 文件操作 ================= */
     async function handleOpen() {
       if (window.showOpenFilePicker) {
         try {
@@ -1555,7 +1620,6 @@
       }
     }
 
-    /* ================= 初始化 ================= */
     async function init() {
       log('========== 应用启动 ==========');
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -1599,9 +1663,13 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         measureEditorLayout();
-        if (!mdState.lines.length) return;
-        const t = measureLineTops(mdState.lines);
-        if (t) mdState.lineTops = t;
+        if (mdState.lines.length) {
+          const t = measureLineTops(mdState.lines);
+          if (t) mdState.lineTops = t;
+        }
+        if (preview.contentWindow) {
+          preview.contentWindow.postMessage({ type: 'apply-sync', refresh: true, syncData: computeEditorSyncData() }, '*');
+        }
       }, 150);
     });
     menuOpen.addEventListener("click", handleOpen);
