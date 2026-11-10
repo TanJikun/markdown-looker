@@ -4,6 +4,7 @@
 |   icon.svg
 |   markdown语法测试.md
 |   README.md
+|   tree.txt
 |   上传.bat
 |   全标题测试.md
 |   超长文件测试.md
