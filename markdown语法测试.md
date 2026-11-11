@@ -49,7 +49,7 @@ GitHub 支持带对齐方式的表格：
 ---
 
 ## 4. 代码块 (Code Blocks)
-带语法高亮的代码块：
+代码块：
 
 ```javascript
 function test() {

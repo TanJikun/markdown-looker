@@ -87,38 +87,152 @@ const fallbackInput = document.getElementById('fallbackInput');
 scrollSync.initialize(editor, previewWrap, { contentRoot: outputEl });
 scrollSync.enable();
 
+// =========================================================
+// Monaco 滚轮平滑滚动
+// WebView2 下 Monaco 自带的 smoothScrolling 对 wheel 基本不生效，
+// 会导致"左栏滚 → 两栏瞬间到位"的生硬手感。这里拦截 wheel，
+// 自己做指数缓动，滚动由 scroll-sync 逐帧同步到右栏，两栏一起变丝滑。
+// =========================================================
+const editorDom = editor.getDomNode();
+let wheelTargetTop = null;
+let wheelRaf = null;
+
+const wheelTick = () => {
+    const current = editor.getScrollTop();
+    const target = wheelTargetTop ?? current;
+    const diff = target - current;
+
+    // 接近目标就吸附并结束
+    if (Math.abs(diff) < 0.5) {
+        editor.setScrollPosition(
+            { scrollTop: target },
+            monaco.editor.ScrollType.Immediate
+        );
+        wheelRaf = null;
+        wheelTargetTop = null;
+        return;
+    }
+
+    // 指数缓动：每帧逼近目标的 22%，约 150~200ms 到位
+    editor.setScrollPosition(
+        { scrollTop: current + diff * 0.22 },
+        monaco.editor.ScrollType.Immediate
+    );
+    wheelRaf = requestAnimationFrame(wheelTick);
+};
+
+// 用 document 的捕获阶段监听，保证先于 Monaco 内部 wheel 处理器执行
+document.addEventListener('wheel', (e) => {
+    if (!editorDom || !editorDom.contains(e.target)) return;
+
+    // 保留 Ctrl（缩放）、Shift（横向滚动）、Alt 等默认行为
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 归一化 deltaY（像素 / 行 / 页）
+    let delta = e.deltaY;
+    if (e.deltaMode === 1) delta *= 16;       // DOM_DELTA_LINE
+    else if (e.deltaMode === 2) delta *= 100; // DOM_DELTA_PAGE
+
+    const lineHeight =
+        editor.getOption(monaco.editor.EditorOption.lineHeight) || 19;
+
+    // 一格滚轮 ≈ 3 行（与 Monaco 默认手感一致）
+    const scrollDelta = (delta / 100) * lineHeight * 3;
+
+    const current = editor.getScrollTop();
+    const max = Math.max(
+        0,
+        editor.getScrollHeight() - editor.getLayoutInfo().height
+    );
+    const base = wheelTargetTop ?? current;
+    wheelTargetTop = Math.max(0, Math.min(max, base + scrollDelta));
+
+    if (!wheelRaf) {
+        wheelRaf = requestAnimationFrame(wheelTick);
+    }
+}, { capture: true, passive: false });
+
 // --- Mermaid 全屏逻辑 ---
 let mermaidFsOverlay = null;
+
 function closeMermaidFullscreen() {
     if (mermaidFsOverlay) {
         mermaidFsOverlay.remove();
         mermaidFsOverlay = null;
     }
-    document.removeEventListener('keydown', mermaidFsEscHandler);
+    // 与 showMermaidFullscreen 中注册的捕获阶段保持一致
+    document.removeEventListener('keydown', mermaidFsEscHandler, true);
 }
+
 function mermaidFsEscHandler(e) {
-    if (e.key === 'Escape') closeMermaidFullscreen();
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMermaidFullscreen();
+    }
 }
+
 function showMermaidFullscreen(svgHtml) {
     if (mermaidFsOverlay) closeMermaidFullscreen();
+
     const overlay = document.createElement('div');
     overlay.id = 'mermaid-fs-overlay';
+
     const content = document.createElement('div');
     content.id = 'mermaid-fs-content';
     content.innerHTML = svgHtml;
+
     const closeBtn = document.createElement('button');
     closeBtn.id = 'mermaid-fs-close';
-    closeBtn.title = '关闭';
+    closeBtn.title = '关闭 (Esc)';
     closeBtn.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
         <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.751.751 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.751.751 0 0 1-1.06 1.06L8 9.06l-3.22 3.22a.751.751 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
       </svg>`;
     closeBtn.onclick = closeMermaidFullscreen;
+
     overlay.appendChild(content);
     overlay.appendChild(closeBtn);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeMermaidFullscreen(); });
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeMermaidFullscreen();
+    });
+
+    // Ctrl + 鼠标滚轮缩放
+    const svgEl = content.querySelector('svg');
+    let scale = 1;
+    const MIN_SCALE = 0.2;
+    const MAX_SCALE = 10;
+
+    const applyScale = () => {
+        if (svgEl) {
+            // 关键：Mermaid 生成的 SVG 带有内联 max-width（如 max-width: 1234px），
+            // 内联样式优先级高于外部 CSS，必须显式清掉，否则放大无效（只能缩不能放）。
+            svgEl.style.maxWidth = 'none';
+            svgEl.style.maxHeight = 'none';
+            svgEl.style.width = (scale * 100) + '%';
+            svgEl.style.height = 'auto';
+        }
+    };
+    applyScale();
+
+    overlay.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey) return;
+        // 阻止 WebView 自身的整页缩放
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
+        if (next === scale) return;
+        scale = next;
+        applyScale();
+    }, { passive: false });
+
     document.body.appendChild(overlay);
     mermaidFsOverlay = overlay;
-    document.addEventListener('keydown', mermaidFsEscHandler);
+
+    // 捕获阶段监听，避免 Monaco 等内部组件 stopPropagation 吞掉 Esc
+    document.addEventListener('keydown', mermaidFsEscHandler, true);
 }
 
 // --- 复制功能逻辑 ---
