@@ -1,82 +1,101 @@
 # Markdown Looker
 
-> 一款完全复刻 GitHub 渲染效果的轻量级本地 Markdown 桌面编辑器。
+一个极简、优雅、且拥有**极致丝滑左右双向滚动同步**的本地 Markdown 桌面编辑器。
 
-[![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)[![Rust](https://img.shields.io/badge/Rust-1.70+-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
-## 📖 为什么做这个项目？
-
-如果你用过市面上主流的 Markdown 编辑器（如 MarkText 等），你可能会遇到以下痛点：
-1. 对 `GFM (GitHub Flavored Markdown)` 支持不完善，尤其是 `<details>` 折叠块内部包含空行时，经常被错误地识别为代码块。
-2. 很多宣称“GitHub 风格”的编辑器底层使用的是 `markdown-it` 或 `remark`，渲染结果与原生 GitHub 存在肉眼可见的差异。
-3. 强制引入在线 CDN 进行代码高亮，导致断网时体验极差。
-
-**Markdown Looker** 正是为了解决这些问题而生。它抛弃了第三方重型框架，采用原生前端结合 **Comrak (编译为 WASM)** 解析引擎，为你提供 1:1 最纯粹的 GitHub 阅读与写作体验。
+基于 Tauri + Vite + 原生前端技术栈构建，拥有极低的内存占用和原生的性能体验。
 
 ## ✨ 核心特性
 
-- **100% 完美还原 GitHub 渲染**：完美支持 GFM 警告块（Alerts）、表格、任务列表，尤其是原汁原味的 `<details>` 折叠块解析。
-- **完全离线 & 零 CDN**：核心解析器 `comrak.wasm` 已随仓库打包，无需任何网络请求，断网也能完美运行。
-- **极速双栏同步滚动**：基于 `postMessage` 与 `requestAnimationFrame` 深度优化，左右拖拽如丝般顺滑，绝无卡顿感。
-- **原生桌面级体验**：
-  - 支持多标签页管理（Tab System）。
-  - 单实例运行：双击多个 `.md` 文件时，在现有窗口新建标签页，不重复启动进程。
-  - 防误触机制：关闭含有未保存修改的标签页时，自动弹出拦截提示。
-- **深色模式**：整体 UI 与预览区采用 GitHub Dark 主题，沉浸式写作。
+- **极致丝滑的滚动同步**：移植并重构了 [markups](https://github.com/Nir-Bhay/markups) 的源码行号（`data-source-line`）锚点映射算法，无论快速拖拽还是慢速滚动，左右两侧都能完美对齐，告别滚轮漂移。
+- **强大的编辑器底座**：左侧采用 VS Code 同款的 **Monaco Editor**，提供顶级的 Markdown 语法高亮和编辑体验。
+- **全功能渲染支持**：
+  - 支持 **Mermaid** 流程图/时序图渲染，支持“一键复制代码”和“全屏查看”。
+  - 支持 **KaTeX** 数学公式渲染（`$ ... $` 与 `$$ ... $$`）。
+  - 支持 **Prism.js** 代码块高亮，代码块右上角自带“一键复制”按钮。
+  - 支持 GitHub 风格的 Alert 警告块（NOTE, TIP, WARNING 等）。
+- **轻量级桌面应用**：打包生成的 `.exe` 体积小巧，启动迅速，原生支持文件关联（双击 `.md` 文件直接打开）。
+- **多标签页与主题**：支持多文件标签切换，支持深色/浅色主题切换，并自动记忆。
 
 ## 🛠️ 技术栈
 
-- **框架**: [Tauri 2](https://tauri.app/) (Rust) - 极小体积，极低内存占用。
-- **核心解析器**: [Comrak](https://github.com/kivikakk/comrak) (WASM) - 基于 GitHub 官方 `cmark-gfm` 的 Rust 移植版。
-- **前端**: Vanilla JavaScript / HTML5 / CSS3 - 纯手写，无前端框架依赖，运行极快。
+本项目采用前后端分离的现代化桌面开发架构：
 
-## 🚀 快速开始
+### 前端 (Frontend)
+- **构建工具**: [Vite](https://vitejs.dev/) (极致的前端构建体验)
+- **核心语言**: 原生 JavaScript (ES Modules)
+- **编辑器引擎**: [Monaco Editor](https://microsoft.github.io/monaco-editor/)
+- **Markdown 解析**:
+  - [Marked](https://marked.js.org/) (核心解析器)
+  - `marked-highlight` (代码高亮扩展)
+  - `marked-katex-extension` (数学公式扩展)
+  - `marked-alert` (GitHub 警告块扩展)
+  - `marked-footnote` (脚注扩展)
+- **图表与公式**: [Mermaid](https://mermaid.js.org/) & [KaTeX](https://katex.org/)
+- **代码高亮**: [Prism.js](https://prismjs.com/)
+- **安全过滤**: [DOMPurify](https://github.com/cure53/DOMPurify) (防止 XSS 注入)
+- **UI 样式**: 原生 CSS 变量 (支持深色/浅色主题无缝切换)
 
-### 1. 环境准备
-请确保你的电脑上安装了以下工具：
-- [Node.js](https://nodejs.org/) (v16+)
-- [Rust](https://www.rust-lang.org/tools/install) (`rustup` 默认配置即可)
-- [Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Windows 用户必须勾选“使用 C++ 的桌面开发”)
-
-### 2. 克隆项目
-```bash
-git clone https://github.com/你的用户名/markdown-looker.git
-cd markdown-looker
-```
-
-*(注：本项目已内置离线解析器 `src/comrak`，无需额外下载依赖。)*
-
-### 3. 开发调试
-```bash
-# 全局安装 Tauri CLI（如果尚未安装）
-npm install -g @tauri-apps/cli
-
-# 启动开发服务器
-tauri dev
-```
-
-### 4. 打包发布
-```bash
-tauri build
-```
-编译完成后，你的独立可执行文件 `.exe` 将生成在 `src-tauri/target/release/` 目录下，直接双击即可使用。
+### 后端与打包 (Backend & Bundler)
+- **桌面框架**: [Tauri (v2)](https://tauri.app/) 
+- **后端语言**: [Rust](https://www.rust-lang.org/)
+- **系统交互**: 通过 Tauri IPC 实现原生的文件读写、系统对话框调用及窗口主题控制。
 
 ## 📂 项目结构
+
 ```text
 markdown-looker/
-├── src/                  # 前端源码目录
-│   ├── index.html        # 主界面（UI、样式、JS 逻辑均在此）
-│   └── comrak/           # 离线 Comrak WASM 解析器包
-├── src-tauri/            # Tauri Rust 后端
-│   ├── src/lib.rs        # Rust 核心逻辑（单实例拦截、文件读写）
-│   ├── Cargo.toml        # Rust 依赖配置
-│   └── tauri.conf.json   # Tauri 全局配置文件
-└── README.md
+├── src/                      # 前端源码目录
+│   ├── core/                 # 核心逻辑
+│   │   ├── scroll-sync.js    # 双向滚动同步核心算法
+│   │   ├── source-lines.js   # Markdown 块级行号锚点提取
+│   │   ├── sanitize.js       # HTML 安全过滤
+│   │   ├── debounce.js       # 性能防抖
+│   │   └── eventBus.js       # 事件总线
+│   ├── main.js               # 应用入口，串联 Monaco 与 Markdown 渲染
+│   └── style.css             # 全局 UI 与 Markdown 渲染样式
+├── src-tauri/                # Tauri (Rust) 后端目录
+│   ├── src/                  # Rust 源码
+│   ├── Cargo.toml            # Rust 依赖配置
+│   └── tauri.conf.json       # Tauri 应用配置
+├── index.html                # 主页面 HTML 骨架
+├── package.json              # 前端依赖与脚本
+├── vite.config.js            # Vite 配置
+└── build.bat                 # Windows 一键编译打包脚本
 ```
 
-## 🤝 贡献与反馈
-欢迎提出 Issue 或提交 Pull Request。如果你觉得这个项目对你有帮助，请给一个 ⭐️ Star 支持一下！
+## 🚀 开发与构建
 
-## 📄 开源协议
-本项目基于 [MIT License](LICENSE) 开源。
-项目内部集成的 `comrak` 解析器基于 [BSD-2-Clause License](https://github.com/kivikakk/comrak/blob/main/COPYING) 开源。
+### 环境准备
+请确保你已安装：
+1. [Node.js](https://nodejs.org/) (推荐 v18+)
+2. [Rust](https://www.rust-lang.org/tools/install) (通过 rustup 安装)
+3. [Tauri CLI](https://tauri.app/v1/guides/getting-started/prerequisites)
+
+### 安装依赖
+```bash
+npm install
+```
+
+### 本地开发调试
+```bash
+# 启动纯前端浏览器预览 (推荐用于调试 UI 和同步逻辑)
+npm run dev
+
+# 启动 Tauri 桌面端热更新开发
+npm run tauri dev
+```
+
+### 生产环境打包
+你可以直接双击根目录下的 `build.bat` (Windows)，或者运行以下命令：
+```bash
+npm run tauri build
+```
+打包完成后，可执行文件将生成在 `src-tauri/target/release/` 目录下。
+
+## 🙏 致谢
+
+- 感谢 [Nir-Bhay/markups](https://github.com/Nir-Bhay/markups) 项目提供的完美滚动同步解决方案（`scroll-sync` 及 `source-lines` 逻辑），本项目在此基础上进行了深度适配与重构。
+
+## 📄 License
+
+MIT License

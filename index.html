@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>Markdown Looker</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+
+<body>
+  <header id="top-bar">
+    <div id="menu-container">
+      <button id="menu-btn">☰</button>
+      <div id="dropdown-menu">
+        <button id="menu-open">打开文件 <span class="shortcut">Ctrl+O</span></button>
+        <button id="menu-save">保存 <span class="shortcut">Ctrl+S</span></button>
+        <button id="menu-save-as">另存为 <span class="shortcut">Ctrl+Shift+S</span></button>
+        <hr>
+        <button class="theme-option" data-theme="dark">深色</button>
+        <button class="theme-option" data-theme="light">浅色</button>
+      </div>
+    </div>
+    <div id="tabs-container"></div>
+  </header>
+
+  <main id="main-content">
+    <div id="editor-container" style="width: 50%; height: 100%; border-right: 1px solid var(--border);"></div>
+    <div id="preview" style="flex: 1; height: 100%; overflow-y: auto; padding: 24px; background: var(--bg);">
+      <div id="output"></div>
+    </div>
+  </main>
+
+  <input type="file" id="fallbackInput" accept=".md,.markdown,.mdx,.txt" hidden>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>

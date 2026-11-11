@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
+use tauri_plugin_dialog::{DialogExt, FilePath};
 
 #[derive(Serialize)]
 struct FileData {
@@ -155,10 +156,51 @@ fn save_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+/// 把 dialog 插件返回的 FilePath 转成路径字符串。
+/// FilePath 是枚举：Path(PathBuf) 或 Url(Url)。
+fn file_path_to_string(file_path: FilePath) -> String {
+    match file_path {
+        FilePath::Path(p) => p.to_string_lossy().to_string(),
+        FilePath::Url(u) => u.to_string(),
+    }
+}
+
+#[tauri::command]
+async fn open_dialog(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    // 链式调用：add_filter 消费 self 并返回 Self
+    let file_path = app
+        .dialog()
+        .file()
+        .add_filter("Markdown", &["md", "markdown", "txt"])
+        .blocking_pick_file();
+
+    Ok(file_path.map(file_path_to_string))
+}
+
+#[tauri::command]
+async fn save_dialog(
+    app: tauri::AppHandle,
+    default_name: Option<String>,
+) -> Result<Option<String>, String> {
+    // add_filter 返回 Self，重新绑定后再继续调用 set_file_name
+    let mut dialog = app
+        .dialog()
+        .file()
+        .add_filter("Markdown", &["md", "markdown"]);
+
+    if let Some(name) = default_name {
+        dialog = dialog.set_file_name(name);
+    }
+
+    let file_path = dialog.blocking_save_file();
+    Ok(file_path.map(file_path_to_string))
+}
+
 // ==================== 入口 ====================
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if argv.len() > 1 {
                 let path = &argv[1];
@@ -171,14 +213,12 @@ pub fn run() {
             }
         }))
         .setup(|app| {
-            // 设置窗口图标
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(icon) = app.default_window_icon() {
                     let _ = window.set_icon(icon.clone());
                 }
             }
 
-            // 初始化日志
             match init_log() {
                 Ok(path) => {
                     eprintln!("[log] 日志文件: {}", path.display());
@@ -196,6 +236,8 @@ pub fn run() {
             get_initial_file,
             read_file,
             save_file,
+            open_dialog,
+            save_dialog,
             load_config,
             save_config,
             append_log

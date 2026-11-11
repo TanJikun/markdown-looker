@@ -1,73 +1,37 @@
-|   .gitignore
-|   1.txt
-|   build.bat
-|   icon.svg
-|   markdown语法测试.md
-|   README.md
-|   tree.txt
-|   上传.bat
-|   全标题测试.md
-|   超长文件测试.md
-|   
-+---src
-|   |   index.html
-|   |   render-worker.js
-|   |   
-|   +---comrak
-|   |   |   index.d.ts
-|   |   |   index.d.ts.map
-|   |   |   index.js
-|   |   |   index.js.map
-|   |   |   index.ts
-|   |   |   LICENSE
-|   |   |   package.json
-|   |   |   README.md
-|   |   |   
-|   |   \---lib
-|   |       |   comrak_wasm.d.ts
-|   |       |   comrak_wasm.js
-|   |       |   
-|   |       \---lib
-|   |               brotli.js
-|   |               
-|   \---libs
-|           mermaid.min.js
-|           tex-svg.js
-|           
-\---src-tauri
-    |   .gitignore
-    |   build.rs
-    |   Cargo.lock
-    |   Cargo.toml
-    |   tauri.conf.json
-    |   
-    +---capabilities
-    |       default.json
-    |       
-    +---gen
-    |   \---schemas
-    |           acl-manifests.json
-    |           capabilities.json
-    |           desktop-schema.json
-    |           windows-schema.json
-    |           
-    +---icons
-    |       icon.ico
-    |       icon.svg
-    |       
-    +---src
-    |       lib.rs
-    |       main.rs
-    |       
-    \---target
-        |   .rustc_info.json
-        |   CACHEDIR.TAG
-        |   
-        \---release
-            |   .cargo-artifact-lock
-            |   .cargo-build-lock
-            |   .cargo-lock
-            |   app.d
-            |   app.exe
-            |   app.pdb
-            太多不放了
+.gitignore
+README.md
+build.bat
+icon.svg
+"markdown\350\257\255\346\263\225\346\265\213\350\257\225.md"
+package-lock.json
+package.json
+src-tauri/.gitignore
+src-tauri/Cargo.lock
+src-tauri/Cargo.toml
+src-tauri/build.rs
+src-tauri/capabilities/default.json
+src-tauri/icons/icon.ico
+src-tauri/icons/icon.svg
+src-tauri/src/lib.rs
+src-tauri/src/main.rs
+src-tauri/tauri.conf.json
+src/comrak/LICENSE
+src/comrak/README.md
+src/comrak/index.d.ts
+src/comrak/index.d.ts.map
+src/comrak/index.js
+src/comrak/index.js.map
+src/comrak/index.ts
+src/comrak/lib/comrak_wasm.d.ts
+src/comrak/lib/comrak_wasm.js
+src/comrak/lib/lib/brotli.js
+src/comrak/package.json
+src/index.html
+src/libs/mermaid.min.js
+src/libs/tex-svg.js
+src/render-worker.js
+tree.txt
+vite.config.js
+"\344\270\212\344\274\240.bat"
+"\345\205\250\346\240\207\351\242\230\346\265\213\350\257\225.md"
+"\350\266\205\351\225\277\346\226\207\344\273\266\346\265\213\350\257\225.md"
