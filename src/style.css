@@ -564,21 +564,37 @@ body {
     z-index: 9999;
 }
 
-/* 用 block + overflow:auto 替代 flex 居中，
-   这样 Ctrl+滚轮放大后 SVG 超过容器时可以正常滚动查看。 */
+/* 用 block + overflow:auto，方便拖动/滚动查看放大的 SVG。
+   宽高由 JS 按 SVG viewBox 计算 contain 后写入内联样式。 */
 #mermaid-fs-content {
     width: 100%;
     height: 100%;
     overflow: auto;
     padding: 40px;
     box-sizing: border-box;
+    cursor: default;
+    user-select: none;
+}
+
+/* 内容溢出时显示抓手光标（可拖动）；拖动中由 .dragging 覆盖 */
+#mermaid-fs-content.scrollable {
+    cursor: grab;
+}
+
+#mermaid-fs-content.dragging {
+    cursor: grabbing;
+}
+
+/* Ctrl 按住期间屏蔽 content 的鼠标事件：
+   wheel 的 hit-test 会落到 overlay 上，content 不再被当作滚动目标，
+   从而确保 Ctrl+滚轮只缩放、绝不滚动。 */
+#mermaid-fs-content.ctrl-held {
+    pointer-events: none;
 }
 
 #mermaid-fs-content svg {
     display: block;
     margin: 0 auto;
-    width: 100%;
-    height: auto;
     /* !important 兜底：Mermaid 生成的 SVG 带内联 max-width，
        内联样式优先级高于此处，必须用 !important 才能清掉 */
     max-width: none !important;

@@ -157,6 +157,8 @@ document.addEventListener('wheel', (e) => {
 
 // --- Mermaid 全屏逻辑 ---
 let mermaidFsOverlay = null;
+/** window 级监听器的清理函数集合（overlay 内部监听器随 overlay.remove() 一起销毁） */
+let mermaidFsCleanup = [];
 
 function closeMermaidFullscreen() {
     if (mermaidFsOverlay) {
@@ -165,6 +167,10 @@ function closeMermaidFullscreen() {
     }
     // 与 showMermaidFullscreen 中注册的捕获阶段保持一致
     document.removeEventListener('keydown', mermaidFsEscHandler, true);
+    for (const fn of mermaidFsCleanup) {
+        try { fn(); } catch (e) { /* noop */ }
+    }
+    mermaidFsCleanup = [];
 }
 
 function mermaidFsEscHandler(e) {
@@ -195,41 +201,177 @@ function showMermaidFullscreen(svgHtml) {
 
     overlay.appendChild(content);
     overlay.appendChild(closeBtn);
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeMermaidFullscreen();
-    });
 
-    // Ctrl + 鼠标滚轮缩放
+    // 必须挂到 DOM 才能读到 content.clientWidth / clientHeight
+    document.body.appendChild(overlay);
+    mermaidFsOverlay = overlay;
+
     const svgEl = content.querySelector('svg');
+
     let scale = 1;
     const MIN_SCALE = 0.2;
     const MAX_SCALE = 10;
+    /** "fit contain" 后的基础像素尺寸；实际显示尺寸 = base * scale */
+    let baseW = 1;
+    let baseH = 1;
 
-    const applyScale = () => {
+    // 依据 SVG 宽高比计算 contain 后的基础尺寸，使其刚好塞入可用区域
+    const computeBase = () => {
+        const cs = getComputedStyle(content);
+        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        // 减 1 避免亚像素导致恰好出现滚动条
+        const availW = Math.max(1, content.clientWidth - padX - 1);
+        const availH = Math.max(1, content.clientHeight - padY - 1);
+
+        let aspect = null;
         if (svgEl) {
-            // 关键：Mermaid 生成的 SVG 带有内联 max-width（如 max-width: 1234px），
-            // 内联样式优先级高于外部 CSS，必须显式清掉，否则放大无效（只能缩不能放）。
-            svgEl.style.maxWidth = 'none';
-            svgEl.style.maxHeight = 'none';
-            svgEl.style.width = (scale * 100) + '%';
-            svgEl.style.height = 'auto';
+            const vb = svgEl.viewBox && svgEl.viewBox.baseVal;
+            if (vb && vb.width && vb.height) {
+                aspect = vb.width / vb.height;
+            } else {
+                const w = svgEl.width && svgEl.width.baseVal ? svgEl.width.baseVal.value : 0;
+                const h = svgEl.height && svgEl.height.baseVal ? svgEl.height.baseVal.value : 0;
+                if (w && h) aspect = w / h;
+            }
+        }
+
+        if (aspect && isFinite(aspect) && aspect > 0) {
+            if (availW / availH > aspect) {
+                // 高度受限
+                baseH = availH;
+                baseW = availH * aspect;
+            } else {
+                // 宽度受限
+                baseW = availW;
+                baseH = availW / aspect;
+            }
+        } else {
+            // 拿不到宽高比，退化为容器填充
+            baseW = availW;
+            baseH = availH;
         }
     };
+
+    // 根据是否溢出切换光标（default / grab），拖动时由 .dragging 覆盖为 grabbing
+    const updateCursor = () => {
+        const canX = content.scrollWidth > content.clientWidth + 1;
+        const canY = content.scrollHeight > content.clientHeight + 1;
+        content.classList.toggle('scrollable', canX || canY);
+    };
+
+    const applyScale = () => {
+        if (!svgEl) return;
+        // 关键：Mermaid 生成的 SVG 带有内联 max-width（如 max-width: 1234px），
+        // 内联样式优先级高于外部 CSS，必须显式清掉，否则放大无效（只能缩不能放）。
+        svgEl.style.maxWidth = 'none';
+        svgEl.style.maxHeight = 'none';
+        svgEl.style.width = (baseW * scale) + 'px';
+        svgEl.style.height = (baseH * scale) + 'px';
+        // set 样式后读 scrollWidth 会触发同步重排，能读到最新值
+        updateCursor();
+    };
+
+    // 初始：铺满屏幕
+    computeBase();
     applyScale();
 
-    overlay.addEventListener('wheel', (e) => {
-        if (!e.ctrlKey) return;
-        // 阻止 WebView 自身的整页缩放
+    // --- Ctrl + 滚轮 = 只缩放 ---
+    // 双保险：
+    //  a) content 在 capture 阶段拦截（preventDefault 阻止默认滚动）
+    //  b) overlay 在冒泡阶段拦截（Ctrl 按住时 pointer-events:none 让 target 落到 overlay）
+    // 通过 e.defaultPrevented 去重，保证缩放只执行一次。
+    const handleZoomWheel = (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;  // 非 Ctrl：交给原生滚动
+        if (e.defaultPrevented) return;        // 已被另一层处理
         e.preventDefault();
+        e.stopPropagation();
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
         const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
         if (next === scale) return;
         scale = next;
         applyScale();
-    }, { passive: false });
+    };
+    content.addEventListener('wheel', handleZoomWheel, { passive: false, capture: true });
+    overlay.addEventListener('wheel', handleZoomWheel, { passive: false });
 
-    document.body.appendChild(overlay);
-    mermaidFsOverlay = overlay;
+    // --- Ctrl 按住期间屏蔽 content 的鼠标事件 ---
+    // 这样 wheel 的 hit-test 会落到 overlay 上，content 不在 target 的滚动容器祖先链里，
+    // WebView2 的 Ctrl+滚轮就不会把 content 当成滚动目标（从根上杜绝滚动）。
+    const setCtrlHeld = (held) => {
+        content.classList.toggle('ctrl-held', held);
+    };
+    const onCtrlKeyDown = (e) => {
+        if (e.key === 'Control' || e.key === 'Meta') setCtrlHeld(true);
+    };
+    const onCtrlKeyUp = (e) => {
+        if (e.key === 'Control' || e.key === 'Meta') setCtrlHeld(false);
+    };
+    const onWindowBlur = () => setCtrlHeld(false);
+
+    window.addEventListener('keydown', onCtrlKeyDown, true);
+    window.addEventListener('keyup', onCtrlKeyUp, true);
+    window.addEventListener('blur', onWindowBlur);
+
+    // --- 鼠标拖动平移（走 scrollLeft/scrollTop，保留滚动条手感） ---
+    let dragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragStartScrollLeft = 0;
+    let dragStartScrollTop = 0;
+
+    const onContentMouseDown = (e) => {
+        if (e.button !== 0) return;
+        // 内容没溢出就没得拖
+        if (!content.classList.contains('scrollable')) return;
+        dragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        dragStartScrollLeft = content.scrollLeft;
+        dragStartScrollTop = content.scrollTop;
+        content.classList.add('dragging');
+        e.preventDefault();
+    };
+
+    const onWindowMouseMove = (e) => {
+        if (!dragging) return;
+        content.scrollLeft = dragStartScrollLeft - (e.clientX - dragStartX);
+        content.scrollTop = dragStartScrollTop - (e.clientY - dragStartY);
+    };
+
+    const onWindowMouseUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        content.classList.remove('dragging');
+    };
+
+    content.addEventListener('mousedown', onContentMouseDown);
+    window.addEventListener('mousemove', onWindowMouseMove);
+    window.addEventListener('mouseup', onWindowMouseUp);
+
+    // --- 窗口尺寸变化时按当前 scale 重新适配 ---
+    const onResize = () => {
+        if (!svgEl) return;
+        computeBase();
+        applyScale();
+    };
+    window.addEventListener('resize', onResize);
+
+    // 注册 window 级清理
+    mermaidFsCleanup.push(() => {
+        content.removeEventListener('mousedown', onContentMouseDown);
+        window.removeEventListener('mousemove', onWindowMouseMove);
+        window.removeEventListener('mouseup', onWindowMouseUp);
+        window.removeEventListener('resize', onResize);
+        window.removeEventListener('keydown', onCtrlKeyDown, true);
+        window.removeEventListener('keyup', onCtrlKeyUp, true);
+        window.removeEventListener('blur', onWindowBlur);
+    });
+
+    // 点击遮罩关闭
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeMermaidFullscreen();
+    });
 
     // 捕获阶段监听，避免 Monaco 等内部组件 stopPropagation 吞掉 Esc
     document.addEventListener('keydown', mermaidFsEscHandler, true);
