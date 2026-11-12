@@ -1,10 +1,10 @@
 [package]
 name = "markdown-looker"
-version = "0.1.0"
-description = "一个像素级还原GitHub的双栏markdown编辑器"
-authors = ["you"]
-license = ""
-repository = ""
+version = "1.1.0"
+description = "像素级还原网页版GitHub的双栏markdown编辑器"
+authors = ["碳基坤"]
+license = "MIT"
+repository = "https://github.com/TanJikun/markdown-looker"
 edition = "2024"
 rust-version = "1.90"
 
