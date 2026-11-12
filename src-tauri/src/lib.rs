@@ -1,3 +1,5 @@
+mod grammar;
+
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -240,7 +242,8 @@ pub fn run() {
             save_dialog,
             load_config,
             save_config,
-            append_log
+            append_log,
+            grammar::read_lang_grammar
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

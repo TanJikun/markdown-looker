@@ -4,7 +4,6 @@
 html {
     --bg: #0D1117;
     --panel: #0D1117;
-    /* 深色：所有 UI 面板统一为 #0D1117 */
     --border: #3D444D;
     --text: #e6edf3;
     --muted: #8b949e;
@@ -12,16 +11,13 @@ html {
     --tab-bg: #0D1117;
     --tab-active-bg: #0D1117;
     --hover-bg: #151B23;
-    /* hover 交互反馈，保持微妙可见 */
     --scroll-track: #0D1117;
     --scroll-thumb: #484f58;
 
-    /* 表格斑马纹 */
     --table-header-bg: #0D1117;
     --table-odd-bg: #0D1117;
     --table-even-bg: #151B23;
 
-    /* 代码块背景 */
     --code-bg: #151B23;
 }
 
@@ -158,7 +154,6 @@ body {
     margin-left: 20px;
 }
 
-/* 主题二级菜单 */
 .theme-menu {
     position: relative;
 }
@@ -327,7 +322,12 @@ body {
     background: transparent;
     padding: 0;
     font-size: 100%;
-    color: var(--text);
+    color: inherit;
+}
+
+/* Shiki 输出的 <pre class="shiki"> */
+#output pre.shiki {
+    background-color: var(--code-bg) !important;
 }
 
 #output blockquote {
@@ -689,4 +689,30 @@ body {
 
 #mermaid-fs-close:hover {
     background: var(--hover-bg);
+}
+
+/* =========================================================
+   7. Shiki 双主题切换
+   ========================================================= */
+/* 
+ * 只对 .shiki (pre) 容器应用背景，
+ * 绝对不要对 .shiki span 应用 background-color，
+ * 否则每个高亮 token 都会变成色块。
+ */
+.shiki {
+    background-color: var(--code-bg) !important;
+    color: var(--shiki-dark) !important;
+}
+
+.shiki span {
+    color: var(--shiki-dark) !important;
+}
+
+html.light .shiki {
+    background-color: var(--code-bg) !important;
+    color: var(--shiki-light) !important;
+}
+
+html.light .shiki span {
+    color: var(--shiki-light) !important;
 }

@@ -3,28 +3,30 @@ import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
 
 import { marked } from 'marked';
-import { markedHighlight } from 'marked-highlight';
 import { gfmHeadingId } from 'marked-gfm-heading-id';
 import markedAlert from 'marked-alert';
 import markedFootnote from 'marked-footnote';
 import markedKatex from 'marked-katex-extension';
-import Prism from 'prismjs';
 import mermaid from 'mermaid';
 
 import { scrollSync } from './core/scroll-sync.js';
 import { annotateSourceLines } from './core/source-lines.js';
 import { debounce } from './core/debounce.js';
 import { sanitizePreviewHtml } from './core/sanitize.js';
+import {
+    initShiki,
+    isShikiReady,
+    highlightCodeBlock,
+} from './core/shiki-highlighter.js';
 
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-bash';
 import 'katex/dist/katex.min.css';
 
 self.MonacoEnvironment = {
     getWorker() { return new editorWorker(); }
 };
+
+// 提前初始化 Shiki，避免首次编辑时延迟。
+initShiki().catch(err => console.warn('[shiki] 初始化失败:', err));
 
 // =========================================================
 // 主题：'system' | 'dark' | 'light'
@@ -59,10 +61,7 @@ let initialResolvedTheme = resolveTheme(currentTheme);
 document.documentElement.classList.toggle('light', initialResolvedTheme === 'light');
 
 // =========================================================
-// 自定义 Monaco 主题：把编辑器的基础色全部对齐到右栏渲染的 CSS 变量
-// 深色：--bg #0D1117 / --text #e6edf3 / --border #3D444D / --panel #0D1117 / --muted #8b949e / --accent #58a6ff
-// 浅色：--bg #ffffff / --text #1f2328 / --border #454C54 / --panel #ffffff / --muted #656d76 / --accent #0969da
-// base 继承 vs-dark / vs，语法高亮 token 色保留，只覆盖基础前景与 UI 部件颜色。
+// 自定义 Monaco 主题
 // =========================================================
 monaco.editor.defineTheme('markdown-looker-dark', {
     base: 'vs-dark',
@@ -71,7 +70,6 @@ monaco.editor.defineTheme('markdown-looker-dark', {
         { token: '', foreground: 'e6edf3' },
     ],
     colors: {
-        // —— 编辑器主体 ——
         'editor.background': '#0D1117',
         'editor.foreground': '#e6edf3',
         'editorCursor.foreground': '#58a6ff',
@@ -86,7 +84,6 @@ monaco.editor.defineTheme('markdown-looker-dark', {
         'editor.lineHighlightBorder': '#00000000',
         'editor.rangeHighlightBackground': '#58a6ff14',
 
-        // —— Gutter / 缩进 / 空白 ——
         'editorGutter.background': '#0D1117',
         'editorLineNumber.foreground': '#484f58',
         'editorLineNumber.activeForeground': '#8b949e',
@@ -95,20 +92,17 @@ monaco.editor.defineTheme('markdown-looker-dark', {
         'editorWhitespace.foreground': '#3D444D',
         'editorRuler.foreground': '#3D444D',
 
-        // —— 滚动条（对应右侧 ::-webkit-scrollbar-thumb） ——
         'scrollbarSlider.background': '#484f58b3',
         'scrollbarSlider.hoverBackground': '#484f58e6',
         'scrollbarSlider.activeBackground': '#484f58',
         'scrollbar.shadow': '#00000000',
 
-        // —— 概览尺：彻底关闭装饰，避免滚动条顶部出现多余标记 ——
         'editorOverviewRuler.border': '#00000000',
         'editorOverviewRuler.background': '#0D1117',
         'editorOverviewRuler.currentContentForeground': '#00000000',
         'editorOverviewRuler.incomingContentForeground': '#00000000',
         'editorOverviewRuler.commonContentForeground': '#00000000',
 
-        // —— 悬浮控件 / 输入框 / 菜单 ——
         'editorWidget.background': '#0D1117',
         'editorWidget.border': '#3D444D',
         'editorWidget.foreground': '#e6edf3',
@@ -136,16 +130,13 @@ monaco.editor.defineTheme('markdown-looker-dark', {
         'list.activeSelectionForeground': '#e6edf3',
         'list.inactiveSelectionBackground': '#0D1117',
 
-        // —— 括号匹配 ——
         'editorBracketMatch.background': '#264F78',
         'editorBracketMatch.border': '#58a6ff',
 
-        // —— 链接 ——
         'editorLink.activeForeground': '#58a6ff',
         'textLink.foreground': '#58a6ff',
         'textLink.activeForeground': '#58a6ff',
 
-        // —— 通用 ——
         'foreground': '#e6edf3',
         'descriptionForeground': '#8b949e',
         'errorForeground': '#f85149',
@@ -233,15 +224,6 @@ monaco.editor.defineTheme('markdown-looker-light', {
 });
 
 marked.use(
-    markedHighlight({
-        langPrefix: 'language-',
-        highlight(code, lang) {
-            const language = Prism.languages[lang] ? lang : 'plaintext';
-            try {
-                return Prism.highlight(code, Prism.languages[language], language);
-            } catch (e) { return code; }
-        }
-    }),
     gfmHeadingId(),
     markedAlert(),
     markedFootnote(),
@@ -273,10 +255,6 @@ const editor = monaco.editor.create(document.getElementById('editor-container'),
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     automaticLayout: true,
-    // 滚动条：12px 轨道 + 6px 滑块，对齐右栏 ::-webkit-scrollbar；
-    // useShadows: false 关闭滚动时顶部的渐隐阴影；
-    // alwaysConsumeMouseWheel: false 让滚轮在边界处不被吃掉；
-    // arrowSize: 0 隐藏轨道两端的箭头（右栏没有）。
     scrollbar: {
         vertical: 'visible',
         horizontal: 'visible',
@@ -293,15 +271,12 @@ const editor = monaco.editor.create(document.getElementById('editor-container'),
     quickSuggestions: false,
     suggestOnTriggerCharacters: false,
     folding: false,
-    // 行号：Monaco 原生按“逻辑行”编号——wordWrap 折行出的视觉行不会累加行号。
-    // lineNumbersMinChars: 3 保证 1~999 行时行号区宽度稳定，不抖动。
     lineNumbers: 'on',
     lineNumbersMinChars: 3,
     renderLineHighlight: 'line',
     cursorBlinking: 'smooth',
     cursorSmoothCaretAnimation: 'on',
     smoothScrolling: true,
-    // 左右各 16：左侧让行号适度贴边，右侧给 12px 滚动条留出 4px 呼吸
     padding: { top: 24, bottom: 24, left: 16, right: 16 },
     fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace',
     fontSize: 16,
@@ -319,9 +294,6 @@ scrollSync.enable();
 
 // =========================================================
 // Monaco 滚轮平滑滚动
-// WebView2 下 Monaco 自带的 smoothScrolling 对 wheel 基本不生效，
-// 会导致"左栏滚 → 两栏瞬间到位"的生硬手感。这里拦截 wheel，
-// 自己做指数缓动，滚动由 scroll-sync 逐帧同步到右栏，两栏一起变丝滑。
 // =========================================================
 const editorDom = editor.getDomNode();
 let wheelTargetTop = null;
@@ -686,6 +658,67 @@ function enhanceMermaidBlocks(container) {
     });
 }
 
+/**
+ * 对 outputEl 内所有 <pre><code class="language-*"> 做 Shiki 高亮。
+ *
+ * 策略：
+ *   - 内置语言：高亮器已就绪，直接替换 <pre> 内部 HTML，零闪烁。
+ *   - 额外语言：await 读取 grammar，加载成功后替换；
+ *     失败则保留原纯文本 DOM，不抛错。
+ *   - 并发加载多个额外语言，`Promise.all` 收齐后一次性替换，
+ *     期间不阻塞 updatePreview 主流程（调用方不 await）。
+ */
+async function applyShikiHighlighting(root, seq) {
+    if (!isShikiReady()) {
+        initShiki()
+            .then(() => {
+                if (seq === previewSeq) applyShikiHighlighting(root, seq);
+            })
+            .catch(err => {
+                console.warn('[shiki] 初始化失败，代码块保持纯文本:', err);
+            });
+        return;
+    }
+
+    const codeEls = [...root.querySelectorAll('pre > code[class*="language-"]')];
+    if (!codeEls.length) return;
+
+    const results = await Promise.all(codeEls.map(async (codeEl) => {
+        const pre = codeEl.parentElement;
+        if (!pre) return null;
+
+        const match = /language-([^\s]+)/.exec(codeEl.className);
+        const rawLang = match ? match[1] : '';
+        const code = codeEl.textContent || '';
+
+        const highlighted = await highlightCodeBlock(code, rawLang);
+        return { pre, highlighted };
+    }));
+
+    if (seq !== previewSeq) return;
+
+    for (const r of results) {
+        if (!r || !r.highlighted) continue;
+        const { pre, highlighted } = r;
+        if (!pre.parentElement) continue;
+
+        const temp = document.createElement('div');
+        temp.innerHTML = highlighted;
+        const newPre = temp.querySelector('pre');
+        if (!newPre) continue;
+
+        // 迁移原 <pre> 上的所有属性（data-source-line 等），
+        // 保留 enhanceCodeBlocks 建立的 wrapper 和复制按钮。
+        for (const attr of pre.attributes) {
+            if (!newPre.hasAttribute(attr.name)) {
+                newPre.setAttribute(attr.name, attr.value);
+            }
+        }
+
+        pre.replaceWith(newPre);
+    }
+}
+
 // --- 核心渲染流程 ---
 let previewSeq = 0;
 
@@ -720,6 +753,13 @@ const updatePreview = async (markdown) => {
     });
 
     enhanceCodeBlocks(outputEl);
+
+    // Shiki 高亮：调用方不 await，避免阻塞后续 mermaid 渲染。
+    // 高亮完成后由 MutationObserver 自动触发 scrollSync.rebuildAnchors。
+    applyShikiHighlighting(outputEl, seq).catch(err => {
+        console.warn('[shiki] 高亮流程异常:', err);
+    });
+
     scrollSync.rebuildAnchors();
 
     for (const job of mermaidJobs) {
@@ -803,14 +843,22 @@ function updateThemeMenuUI() {
     });
 }
 
-function syncWindowTheme(resolved) {
-    if (!isTauri) return;
+/**
+ * 将原始主题同步给原生窗口。
+ * system -> null，让窗口恢复跟随系统；
+ * 否则 Tauri 的 setTheme('light'/'dark') 会强制覆盖 WebView 的
+ * prefers-color-scheme，导致“系统深色 + 用户选浅色”后再选“跟随系统”
+ * 读到的仍是浅色（被污染的 false）。
+ */
+function syncWindowTheme(theme) {
+    if (!isTauri) return Promise.resolve();
     try {
         const win = window.__TAURI__.window.getCurrentWindow();
-        // 传具体值，确保浅色模式下标题栏也变浅
-        win.setTheme(resolved).catch(err => console.error('setTheme 失败:', err));
+        return win.setTheme(theme === 'system' ? null : theme)
+            .catch(err => console.error('setTheme 失败:', err));
     } catch (e) {
         console.error('获取窗口失败:', e);
+        return Promise.resolve();
     }
 }
 
@@ -828,9 +876,22 @@ async function persistTheme(theme) {
     }
 }
 
-function applyTheme(theme, { persist = true } = {}) {
+async function applyTheme(theme, { persist = true } = {}) {
     const next = normalizeTheme(theme);
     currentTheme = next;
+    updateThemeMenuUI();
+
+    // 先把原始主题同步给原生窗口：system -> null
+    await syncWindowTheme(next);
+
+    // setTheme(null) 后 WebView 的 prefers-color-scheme 需要一两帧才恢复，
+    // 否则这里读到的还是上一次 setTheme('light'/'dark') 污染后的值。
+    if (next === 'system' && isTauri) {
+        await new Promise(resolve =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+    }
+
     const resolved = resolveTheme(next);
 
     document.documentElement.classList.toggle('light', resolved === 'light');
@@ -845,14 +906,11 @@ function applyTheme(theme, { persist = true } = {}) {
         securityLevel: 'strict'
     });
 
-    syncWindowTheme(resolved);
-    updateThemeMenuUI();
+    updatePreview(editor.getValue());
 
     if (persist) {
         persistTheme(next);
     }
-
-    updatePreview(editor.getValue());
 }
 
 async function loadPersistedTheme() {
@@ -874,10 +932,10 @@ async function loadPersistedTheme() {
 async function initTheme() {
     const persisted = await loadPersistedTheme();
     if (persisted !== currentTheme) {
-        applyTheme(persisted, { persist: false });
+        await applyTheme(persisted, { persist: false });
     } else {
-        // 即使主题相同，也同步一次标题栏和菜单选中态
-        syncWindowTheme(resolveTheme(currentTheme));
+        // 传原始主题：system 时让窗口 setTheme(null) 跟随系统
+        await syncWindowTheme(currentTheme);
         updateThemeMenuUI();
     }
 }
