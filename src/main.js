@@ -21,6 +21,8 @@ import {
 
 import 'katex/dist/katex.min.css';
 
+import { initToolbar } from './toolbar.js';
+
 self.MonacoEnvironment = {
     getWorker() { return new editorWorker(); }
 };
@@ -291,6 +293,10 @@ const fallbackInput = document.getElementById('fallbackInput');
 
 scrollSync.initialize(editor, previewWrap, { contentRoot: outputEl });
 scrollSync.enable();
+// Markdown 工具栏
+initToolbar(editor, {
+    refreshPreview: () => updatePreview(editor.getValue()),
+});
 
 // =========================================================
 // Monaco 滚轮平滑滚动
