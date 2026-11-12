@@ -4,6 +4,7 @@
  * - 只作用于代码编辑器，预览区选中不生效。
  * - 区1 需要非空选区，其余始终可用。
  * - 每次按钮操作合并为一次撤销步骤。
+ * - 「表格」「警示块」下拉面板：直接弹在按钮下方，无黑色遮罩。
  */
 import * as monaco from 'monaco-editor';
 import { ICONS } from './toolbar-icons.js';
@@ -67,15 +68,6 @@ function rangeLine(line) {
     };
 }
 
-function rangeFullLine(model, line) {
-    return {
-        startLineNumber: line,
-        startColumn: 1,
-        endLineNumber: line,
-        endColumn: model.getLineMaxColumn(line),
-    };
-}
-
 // ---------- 行内格式（区1） ----------
 
 function wrapSelection(editor, left, right) {
@@ -92,7 +84,6 @@ function wrapSelection(editor, left, right) {
         text: wrapped,
     }]);
 
-    // 光标放到包裹后
     const start = sel.getStartPosition();
     const lines = wrapped.split('\n');
     let endLine, endCol;
@@ -109,12 +100,6 @@ function wrapSelection(editor, left, right) {
 
 // ---------- 行级前缀（区2/3/5 引用） ----------
 
-/**
- * 对选区覆盖的每一行行首插入前缀。
- * getPrefix({ line, content, empty, nonEmptyIndex }) 返回要插入的字符串；
- * 返回空字符串表示不插入。
- * nonEmptyIndex 为当前行之前非空行的数量（0-based）。
- */
 function applyLinePrefixes(editor, getPrefix) {
     const model = editor.getModel();
     const sel = editor.getSelection();
@@ -239,7 +224,6 @@ function insertLink(editor) {
         text: linkText,
     }]);
 
-    // 选中占位符 url
     const urlStart = model.getPositionAt(startOffset + text.length + 3);
     const urlEnd = model.getPositionAt(startOffset + text.length + 6);
     editor.setSelection(new monaco.Selection(
@@ -443,134 +427,166 @@ function insertHr(editor) {
     editor.pushUndoStop();
 }
 
-// ---------- 弹窗 ----------
+// ---------- 下拉面板（替代原遮罩弹窗） ----------
 
-function showModal({ title, body, validate, onConfirm }) {
-    const overlay = document.createElement('div');
-    overlay.className = 'toolbar-modal-overlay';
+let currentPanel = null; // { el, anchor, cleanup }
 
-    const modal = document.createElement('div');
-    modal.className = 'toolbar-modal';
-    modal.innerHTML = `
-        <div class="toolbar-modal-title">${title}</div>
-        <div class="toolbar-modal-body">${body}</div>
-        <div class="toolbar-modal-footer">
-            <button type="button" class="toolbar-modal-cancel">取消</button>
-            <button type="button" class="toolbar-modal-confirm">确定</button>
-        </div>
-    `;
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
+function closePanel() {
+    if (!currentPanel) return;
+    currentPanel.cleanup();
+    currentPanel.el.remove();
+    currentPanel = null;
+}
 
-    const confirmBtn = modal.querySelector('.toolbar-modal-confirm');
-    const cancelBtn = modal.querySelector('.toolbar-modal-cancel');
+/**
+ * 在 anchorEl 下方弹出面板。
+ * 面板是独立的 fixed 定位元素，不带遮罩；点击外部或尺寸变化时自动关闭。
+ * 再次点击同一按钮 => toggle 关闭。
+ */
+function openPanel(anchorEl, buildContent) {
+    if (currentPanel && currentPanel.anchor === anchorEl) {
+        closePanel();
+        return;
+    }
+    closePanel();
 
-    const updateConfirm = () => {
-        confirmBtn.disabled = !validate();
+    const panel = document.createElement('div');
+    panel.className = 'toolbar-dropdown';
+    // 先在隐藏状态下挂到 body，测量宽高
+    panel.style.visibility = 'hidden';
+    document.body.appendChild(panel);
+    buildContent(panel);
+
+    const rect = anchorEl.getBoundingClientRect();
+    const panelW = panel.offsetWidth;
+    const panelH = panel.offsetHeight;
+
+    let left = rect.left;
+    if (left + panelW > window.innerWidth - 8) {
+        left = Math.max(8, rect.right - panelW);
+    }
+    let top = rect.bottom + 4;
+    if (top + panelH > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - panelH - 4);
+    }
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+    panel.style.visibility = '';
+
+    const onMouseDown = (e) => {
+        if (panel.contains(e.target)) return;
+        if (anchorEl.contains(e.target)) return;
+        closePanel();
     };
-    updateConfirm();
+    const onResize = () => closePanel();
 
-    modal.querySelectorAll('input').forEach(inp => {
-        inp.addEventListener('input', updateConfirm);
-        inp.addEventListener('change', updateConfirm);
-    });
+    // 延迟一帧注册，避免本次点击的 mousedown 立即关闭面板
+    setTimeout(() => {
+        document.addEventListener('mousedown', onMouseDown, true);
+        const firstInput = panel.querySelector('input');
+        if (firstInput) {
+            firstInput.focus();
+            firstInput.select();
+        }
+    }, 0);
+    window.addEventListener('resize', onResize);
 
-    const close = () => {
-        overlay.remove();
+    currentPanel = {
+        el: panel,
+        anchor: anchorEl,
+        cleanup: () => {
+            document.removeEventListener('mousedown', onMouseDown, true);
+            window.removeEventListener('resize', onResize);
+        },
     };
-
-    cancelBtn.addEventListener('click', close);
-
-    confirmBtn.addEventListener('click', () => {
-        if (!validate()) return;
-        onConfirm();
-        close();
-    });
-
-    // 点击弹窗外关闭；不支持 ESC
-    overlay.addEventListener('mousedown', (e) => {
-        if (e.target === overlay) close();
-    });
-
-    // 聚焦第一个输入框
-    const firstInput = modal.querySelector('input');
-    if (firstInput) firstInput.focus();
 }
 
-function isValidPositiveInt(value) {
-    const n = Number(value);
-    return Number.isInteger(n) && n >= 1;
-}
+function openTablePanel(anchorEl, editor, afterEdit) {
+    openPanel(anchorEl, (panel) => {
+        panel.innerHTML = `
+            <div class="toolbar-dropdown-section">
+                <label class="toolbar-dropdown-row">
+                    <span>行数</span>
+                    <input class="toolbar-dropdown-input" type="number"
+                           value="1" min="1" step="1" data-role="rows">
+                </label>
+                <label class="toolbar-dropdown-row">
+                    <span>列数</span>
+                    <input class="toolbar-dropdown-input" type="number"
+                           value="1" min="1" step="1" data-role="cols">
+                </label>
+            </div>
+            <div class="toolbar-dropdown-footer">
+                <button type="button" class="toolbar-dropdown-btn toolbar-dropdown-btn-primary"
+                        data-role="confirm">确定</button>
+            </div>
+        `;
 
-function openTableDialog(editor) {
-    showModal({
-        title: '插入表格',
-        body: `
-            <div class="toolbar-modal-row">
-                <label for="md-toolbar-table-rows">行数</label>
-                <input id="md-toolbar-table-rows" class="toolbar-modal-input"
-                       type="number" value="1" min="1" step="1">
-            </div>
-            <div class="toolbar-modal-row">
-                <label for="md-toolbar-table-cols">列数</label>
-                <input id="md-toolbar-table-cols" class="toolbar-modal-input"
-                       type="number" value="1" min="1" step="1">
-            </div>
-        `,
-        validate: () => {
-            const r = document.getElementById('md-toolbar-table-rows');
-            const c = document.getElementById('md-toolbar-table-cols');
-            if (!r || !c) return false;
-            return isValidPositiveInt(r.value) && isValidPositiveInt(c.value);
-        },
-        onConfirm: () => {
-            const r = document.getElementById('md-toolbar-table-rows');
-            const c = document.getElementById('md-toolbar-table-cols');
-            if (!r || !c) return;
-            const rows = parseInt(r.value, 10);
-            const cols = parseInt(c.value, 10);
-            insertTable(editor, rows, cols);
-        },
+        const rowsInput = panel.querySelector('[data-role="rows"]');
+        const colsInput = panel.querySelector('[data-role="cols"]');
+        const confirmBtn = panel.querySelector('[data-role="confirm"]');
+
+        const isPosInt = (v) => {
+            const n = Number(v);
+            return Number.isInteger(n) && n >= 1;
+        };
+        const refresh = () => {
+            confirmBtn.disabled = !(isPosInt(rowsInput.value) && isPosInt(colsInput.value));
+        };
+
+        const confirm = () => {
+            const r = Number(rowsInput.value);
+            const c = Number(colsInput.value);
+            if (!Number.isInteger(r) || r < 1) return;
+            if (!Number.isInteger(c) || c < 1) return;
+            insertTable(editor, r, c);
+            closePanel();
+            editor.focus();
+            afterEdit();
+        };
+
+        rowsInput.addEventListener('input', refresh);
+        colsInput.addEventListener('input', refresh);
+        const onKeyDown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (confirmBtn.disabled) return;
+                confirm();
+            }
+        };
+        rowsInput.addEventListener('keydown', onKeyDown);
+        colsInput.addEventListener('keydown', onKeyDown);
+        confirmBtn.addEventListener('click', confirm);
+        refresh();
     });
 }
 
-function openAlertDialog(editor) {
-    showModal({
-        title: '插入警示块',
-        body: `
-            <div class="toolbar-alert-options">
-                ${ALERT_TYPES.map(t => `
-                    <label class="toolbar-alert-option">
-                        <input type="radio" name="md-toolbar-alert-type" value="${t}"
-                               ${t === 'NOTE' ? 'checked' : ''}>
-                        <span>${t}</span>
-                    </label>
-                `).join('')}
-            </div>
-        `,
-        validate: () => {
-            const el = document.querySelector('input[name="md-toolbar-alert-type"]:checked');
-            return !!el;
-        },
-        onConfirm: () => {
-            const el = document.querySelector('input[name="md-toolbar-alert-type"]:checked');
-            if (!el) return;
-            insertAlert(editor, el.value);
-        },
+function openAlertPanel(anchorEl, editor, afterEdit) {
+    openPanel(anchorEl, (panel) => {
+        panel.innerHTML = ALERT_TYPES.map(t => `
+            <button type="button" class="toolbar-dropdown-item" data-type="${t}">${t}</button>
+        `).join('');
+
+        panel.addEventListener('click', (e) => {
+            const btn = e.target.closest('.toolbar-dropdown-item');
+            if (!btn) return;
+            insertAlert(editor, btn.dataset.type);
+            closePanel();
+            editor.focus();
+            afterEdit();
+        });
     });
 }
 
 // ---------- DOM 构建 ----------
 
 const BUTTONS = [
-    // 区1
     { group: 1, action: 'bold', title: '加粗', text: 'B', style: 'font-weight:800' },
     { group: 1, action: 'italic', title: '斜体', text: 'I', style: 'font-style:italic;font-family:Georgia,serif' },
     { group: 1, action: 'strike', title: '删除线', text: 'S', style: 'text-decoration:line-through' },
     { group: 1, action: 'inlineCode', title: '行内代码', icon: 'inlineCode' },
     { group: 1, action: 'highlight', title: '文本高亮', icon: 'highlight' },
 
-    // 区2
     { group: 2, action: 'h1', title: '一级标题', text: 'H1' },
     { group: 2, action: 'h2', title: '二级标题', text: 'H2' },
     { group: 2, action: 'h3', title: '三级标题', text: 'H3' },
@@ -578,18 +594,15 @@ const BUTTONS = [
     { group: 2, action: 'h5', title: '五级标题', text: 'H5' },
     { group: 2, action: 'h6', title: '六级标题', text: 'H6' },
 
-    // 区3
     { group: 3, action: 'ul', title: '无序列表', icon: 'ul' },
     { group: 3, action: 'ol', title: '有序列表', icon: 'ol' },
     { group: 3, action: 'task', title: '任务列表', icon: 'task' },
 
-    // 区4
     { group: 4, action: 'link', title: '链接', icon: 'link' },
     { group: 4, action: 'image', title: '图片', icon: 'image' },
     { group: 4, action: 'table', title: '表格', icon: 'table' },
     { group: 4, action: 'codeBlock', title: '代码块', icon: 'codeBlock' },
 
-    // 区5
     { group: 5, action: 'quote', title: '引用', icon: 'quote' },
     { group: 5, action: 'alert', title: '警示块', icon: 'alert' },
     { group: 5, action: 'hr', title: '分割线', icon: 'hr' },
@@ -658,7 +671,8 @@ export function initToolbar(editor, options = {}) {
         refreshInline();
     };
 
-    const dispatch = (action) => {
+    const dispatch = (btn) => {
+        const action = btn.dataset.action;
         switch (action) {
             case 'bold': wrapSelection(editor, '**', '**'); break;
             case 'italic': wrapSelection(editor, '*', '*'); break;
@@ -679,11 +693,11 @@ export function initToolbar(editor, options = {}) {
 
             case 'link': insertLink(editor); break;
             case 'image': insertImage(editor); break;
-            case 'table': openTableDialog(editor); return;
+            case 'table': openTablePanel(btn, editor, afterEdit); return;
             case 'codeBlock': insertCodeBlock(editor); break;
 
             case 'quote': applyQuote(editor); break;
-            case 'alert': openAlertDialog(editor); return;
+            case 'alert': openAlertPanel(btn, editor, afterEdit); return;
             case 'hr': insertHr(editor); break;
         }
         afterEdit();
@@ -693,10 +707,9 @@ export function initToolbar(editor, options = {}) {
         const btn = e.target.closest('.md-toolbar-btn');
         if (!btn || btn.disabled) return;
         e.preventDefault();
-        dispatch(btn.dataset.action);
+        dispatch(btn);
     });
 
-    // 实时刷新区1按钮可用性
     editor.onDidChangeCursorSelection(refreshInline);
     editor.onDidChangeModelContent(refreshInline);
 

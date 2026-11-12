@@ -8,16 +8,26 @@
 
 - **极致丝滑的滚动同步**：移植并重构了 [markups](https://github.com/Nir-Bhay/markups) 的源码行号（`data-source-line`）锚点映射算法，无论快速拖拽还是慢速滚动，左右两侧都能完美对齐，告别滚轮漂移。
 - **强大的编辑器底座**：左侧采用 VS Code 同款的 **Monaco Editor**，提供顶级的 Markdown 语法高亮和编辑体验。
+- **内置 Markdown 工具栏**：标签页下方提供一整条 Markdown 快捷工具栏，分为五组，覆盖常用写作操作：
+  - **行内格式**：加粗、斜体、删除线、行内代码、文本高亮。仅在编辑器存在非空选区时可用。
+  - **标题**：H1 - H6，对选区覆盖的每一行行首直接追加 `#` 前缀。
+  - **列表**：无序列表、有序列表（按非空行自动编号）、任务列表（`- [ ] ` / `- [x] ` 逐行切换）。
+  - **插入**：链接、图片、表格、代码块。表格与警示块使用类似主题二级菜单的下拉面板，直接弹在按钮下方，无黑色遮罩。
+  - **块级**：引用、警示块（NOTE / TIP / IMPORTANT / WARNING / CAUTION）、分割线。
+
+  所有操作均为**单步撤销**，且只作用于左侧编辑器，不会误改预览区。
+- **多标签页**：支持多文件标签切换，每个标签右侧带关闭按钮。标签名后会显示未保存标记（●）。
+- **未保存保护**：关闭标签或关闭窗口时，若存在未保存文件，会逐个弹出「保存 / 取消」确认框。任一环节点「取消」即中止整个关闭流程。
 - **全功能渲染支持**：
-  - 支持 **Mermaid** 流程图/时序图渲染，支持“一键复制代码”和“全屏查看”。
+  - 支持 **Mermaid** 流程图/时序图渲染，支持「一键复制代码」和「全屏查看」。
   - 支持 **KaTeX** 数学公式渲染（`$ ... $` 与 `$$ ... $$`）。
-  - 支持 **Shiki** 代码块语法高亮，深浅主题切换零重新渲染，代码块右上角自带“一键复制”按钮。
+  - 支持 **Shiki** 代码块语法高亮，深浅主题切换零重新渲染，代码块右上角自带「一键复制」按钮。
   - 支持 GitHub 风格的 Alert 警告块（NOTE, TIP, WARNING 等）。
 - **轻量级代码高亮**：
-  - 内置 8 种常用语言（Java、C、C++、Python、Rust、JavaScript、HTML、CSS、Markdown），打包进主程序，首屏零闪烁。
-  - 其余语言通过 `langs/` 目录按需加载，按实际使用选择性放入语法文件，不占打包体积。
+  - 内置 9 种常用语言（Java、C、C++、Python、Rust、JavaScript、HTML、CSS、Markdown），打包进主程序，首屏零闪烁。
+  - 其余语言通过 exe 同级 `langs/` 目录按需加载，按实际使用选择性放入语法文件，不占打包体积。
 - **轻量级桌面应用**：打包生成的 `.exe` 体积小巧，启动迅速，原生支持文件关联（双击 `.md` 文件直接打开）。
-- **多标签页与主题**：支持多文件标签切换，支持深色/浅色主题切换，并自动记忆。
+- **主题**：支持跟随系统 / 深色 / 浅色三种模式，自动记忆到本地存储与 Tauri 配置文件。
 
 ## 技术栈
 
@@ -32,6 +42,7 @@
   - `marked-katex-extension` (数学公式扩展)
   - `marked-alert` (GitHub 警告块扩展)
   - `marked-footnote` (脚注扩展)
+  - `marked-gfm-heading-id` (标题锚点)
 - **图表与公式**: [Mermaid](https://mermaid.js.org/) & [KaTeX](https://katex.org/)
 - **代码高亮**: [Shiki](https://shiki.style/) (基于 TextMate 语法的精确高亮，支持深浅双主题)
 - **安全过滤**: [DOMPurify](https://github.com/cure53/DOMPurify) (防止 XSS 注入)
@@ -40,7 +51,7 @@
 ### 后端与打包 (Backend & Bundler)
 - **桌面框架**: [Tauri (v2)](https://tauri.app/)
 - **后端语言**: [Rust](https://www.rust-lang.org/)
-- **系统交互**: 通过 Tauri IPC 实现原生的文件读写、系统对话框调用、窗口主题控制，以及额外语言语法文件的按需读取。
+- **系统交互**: 通过 Tauri IPC 实现原生的文件读写、系统对话框调用、窗口主题控制、窗口关闭拦截，以及额外语言语法文件的按需读取。
 
 ## 项目结构
 
@@ -54,18 +65,22 @@ markdown-looker/
 │   │   ├── debounce.js           # 性能防抖
 │   │   ├── eventBus.js           # 事件总线
 │   │   └── shiki-highlighter.js  # Shiki 高亮器（内置语言 + 额外语言按需加载）
+│   ├── toolbar.js                # Markdown 工具栏逻辑
+│   ├── toolbar-icons.js          # 工具栏图标
 │   ├── main.js                   # 应用入口，串联 Monaco 与 Markdown 渲染
 │   └── style.css                 # 全局 UI 与 Markdown 渲染样式
 ├── src-tauri/                    # Tauri (Rust) 后端目录
 │   ├── src/                      # Rust 源码
 │   │   ├── lib.rs                # 入口与命令注册
 │   │   └── grammar.rs            # 从 exe 同级 langs/ 读取语法文件
+│   ├── capabilities/
+│   │   └── default.json          # 窗口权限（关闭、主题等）
 │   ├── Cargo.toml                # Rust 依赖配置
 │   └── tauri.conf.json           # Tauri 应用配置
 ├── index.html                    # 主页面 HTML 骨架
 ├── package.json                  # 前端依赖与脚本
 ├── vite.config.js                # Vite 配置
-└── build.bat                     # Windows 一键编译打包脚本
+└── build.bat                     # Windows 一键编译 + 复制到目标目录
 ```
 
 打包完成后，如果希望启用额外语言高亮，需要在 exe 同级目录创建 `langs/` 文件夹（详见下文「代码高亮与额外语言」）：
@@ -101,12 +116,31 @@ npm run dev
 npm run tauri dev
 ```
 
-### 生产环境打包
-你可以直接双击根目录下的 `build.bat` (Windows)，或者运行以下命令：
+### 生产环境构建
+
+本项目**不生成安装包**（`bundle.active: false`），构建产物就是一个裸 exe，不需要 WiX / NSIS 工具链。
+
 ```bash
 npm run tauri build
 ```
-打包完成后，可执行文件将生成在 `src-tauri/target/release/` 目录下。
+
+构建产物路径固定为：
+
+```
+src-tauri/target/release/markdown-looker.exe
+```
+
+`Cargo.toml` 的 crate 名决定了 exe 文件名，无法包含空格，因此产物名为 `markdown-looker.exe`（连字符）。如需带空格的名字，在复制到目标目录时改名即可。
+
+### 一键构建（Windows）
+
+根目录的 `build.bat` 封装了完整流程：
+
+1. 结束可能占用 `markdown-looker.exe` 的残留进程；
+2. 执行 `tauri build`；
+3. 编译成功后，把 `src-tauri/target/release/markdown-looker.exe` 复制到 `D:\software\markdown looker\markdown-looker.exe`（目标目录不存在会自动创建）。
+
+如需修改投放位置，改 `build.bat` 里的 `DEST_DIR` 即可。
 
 ## 代码高亮与额外语言
 
@@ -182,12 +216,21 @@ Shiki 高亮器内置了一张别名映射表，以下写法可直接识别为�
 
 | 场景 | 行为 |
 | :--- | :--- |
-| 内置 8 种语言 | 首帧高亮，零闪烁 |
+| 内置 9 种语言 | 首帧高亮，零闪烁 |
 | 额外语言，`langs/` 存在对应文件 | 首帧纯文本，文件读取完成后替换为高亮 |
 | 额外语言，`langs/` 缺失文件 | 永久纯文本，不报错 |
 | 额外语言，JSON 损坏或格式不合法 | 永久纯文本，控制台输出警告 |
-| 浏览器环境（`npm run dev`） | 仅内置 8 种语言高亮，额外语言全部回退纯文本 |
+| 浏览器环境（`npm run dev`） | 仅内置 9 种语言高亮，额外语言全部回退纯文本 |
 | 深浅主题切换 | 不重新高亮，仅通过 CSS 变量切换颜色 |
+
+## 快捷键
+
+| 快捷键 | 功能 |
+| :--- | :--- |
+| `Ctrl + O` | 打开文件 |
+| `Ctrl + S` | 保存当前标签 |
+| `Ctrl + Shift + S` | 另存为 |
+| `Esc` | 关闭 Mermaid 全屏 / 关闭保存确认弹窗 |
 
 ## 致谢
 

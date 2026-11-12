@@ -836,10 +836,108 @@ function renderTabsUI() {
     tabs.forEach(tab => {
         const el = document.createElement('div');
         el.className = `tab ${tab.id === activeTabId ? 'active' : ''}`;
-        el.innerHTML = `<span>${tab.name} ${tab.isDirty ? '●' : ''}</span>`;
+        el.title = tab.path || tab.name;
+
+        const label = document.createElement('span');
+        label.className = 'tab-label';
+        label.textContent = tab.name + (tab.isDirty ? ' ●' : '');
+        el.appendChild(label);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'tab-close';
+        closeBtn.title = '关闭';
+        closeBtn.setAttribute('aria-label', '关闭标签页');
+        closeBtn.innerHTML = `<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.751.751 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.751.751 0 0 1-1.06 1.06L8 9.06l-3.22 3.22a.751.751 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`;
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handleCloseTab(tab.id);
+        });
+        el.appendChild(closeBtn);
+
         el.onclick = () => switchTab(tab.id);
         tabsContainer.appendChild(el);
     });
+}
+
+function showSaveConfirmDialog(tabName) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'save-confirm-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'save-confirm-dialog';
+        dialog.innerHTML = `
+            <div class="save-confirm-message"></div>
+            <div class="save-confirm-buttons">
+                <button type="button" class="save-confirm-cancel">取消</button>
+                <button type="button" class="save-confirm-save">保存</button>
+            </div>
+        `;
+        dialog.querySelector('.save-confirm-message').textContent =
+            `「${tabName}」有未保存的更改。是否保存？`;
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        const close = (result) => {
+            overlay.remove();
+            document.removeEventListener('keydown', onKey, true);
+            resolve(result);
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                close('cancel');
+            }
+        };
+
+        dialog.querySelector('.save-confirm-save')
+            .addEventListener('click', () => close('save'));
+        dialog.querySelector('.save-confirm-cancel')
+            .addEventListener('click', () => close('cancel'));
+        document.addEventListener('keydown', onKey, true);
+        dialog.querySelector('.save-confirm-save').focus();
+    });
+}
+
+async function handleCloseTab(tabId) {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    if (tabId === activeTabId) {
+        tab.content = editor.getValue();
+    }
+
+    if (tab.isDirty) {
+        const action = await showSaveConfirmDialog(tab.name);
+        if (action === 'cancel') return;
+        const ok = await saveTab(tabId, false);
+        if (!ok) return; // 保存失败 / 取消保存对话框 => 中止关闭
+    }
+
+    removeTab(tabId);
+}
+
+function removeTab(tabId) {
+    const idx = tabs.findIndex(t => t.id === tabId);
+    if (idx === -1) return;
+
+    tabs.splice(idx, 1);
+
+    if (tabs.length === 0) {
+        // 关闭所有后至少保留一个空白标签
+        activeTabId = null;
+        createTab('未命名.md', '');
+        return;
+    }
+
+    if (activeTabId === tabId) {
+        const nextIdx = Math.min(idx, tabs.length - 1);
+        switchTab(tabs[nextIdx].id);
+    } else {
+        renderTabsUI();
+    }
 }
 
 // --- 主题应用 / 持久化 ---
@@ -990,49 +1088,56 @@ fallbackInput.addEventListener('change', async () => {
     }
 });
 
-async function handleSave(saveAs = false) {
-    const active = tabs.find(t => t.id === activeTabId);
-    if (!active) return;
+async function saveTab(tabId, saveAs = false) {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return false;
 
-    const content = editor.getValue();
+    const content = tabId === activeTabId ? editor.getValue() : tab.content;
 
     if (!isTauri) {
         const blob = new Blob([content], { type: 'text/markdown' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = active.name || 'untitled.md';
+        a.download = tab.name || 'untitled.md';
         a.click();
         URL.revokeObjectURL(url);
-        active.content = content;
-        active.isDirty = false;
+        tab.content = content;
+        tab.isDirty = false;
         renderTabsUI();
-        return;
+        return true;
     }
 
-    let path = active.path;
+    let path = tab.path;
     if (!path || saveAs) {
         try {
-            path = await invoke('save_dialog', { defaultName: active.name });
+            path = await invoke('save_dialog', { defaultName: tab.name });
         } catch (e) {
             console.error('Save dialog fail:', e);
             alert('打开保存对话框失败：' + e);
-            return;
+            return false;
         }
-        if (!path) return;
+        if (!path) return false; // 用户取消保存对话框
     }
 
     try {
         await invoke('save_file', { path, content });
-        active.path = path;
-        active.name = getFileName(path);
-        active.content = content;
-        active.isDirty = false;
+        tab.path = path;
+        tab.name = getFileName(path);
+        tab.content = content;
+        tab.isDirty = false;
         renderTabsUI();
+        return true;
     } catch (e) {
         console.error('Save fail:', e);
         alert('保存失败：' + e);
+        return false;
     }
+}
+
+async function handleSave(saveAs = false) {
+    if (!activeTabId) return;
+    await saveTab(activeTabId, saveAs);
 }
 
 document.getElementById('menu-open').onclick = () => handleOpen();
@@ -1080,3 +1185,51 @@ if (isTauri) {
 
 // 启动时从 config.json 同步主题（Tauri）或 localStorage（浏览器）
 initTheme();
+
+// --- 关闭窗口：拦截 + 逐个询问脏标签 ---
+let closingInProgress = false;
+
+async function confirmCloseAllTabs() {
+    const cur = tabs.find(t => t.id === activeTabId);
+    if (cur) cur.content = editor.getValue();
+
+    const dirtyTabs = tabs.filter(t => t.isDirty);
+    for (const tab of dirtyTabs) {
+        const action = await showSaveConfirmDialog(tab.name);
+        if (action === 'cancel') return false;
+        const ok = await saveTab(tab.id, false);
+        if (!ok) return false;
+    }
+    return true;
+}
+
+function setupWindowCloseHandler() {
+    if (!isTauri) {
+        window.addEventListener('beforeunload', (e) => {
+            const cur = tabs.find(t => t.id === activeTabId);
+            if (cur) cur.content = editor.getValue();
+            if (tabs.some(t => t.isDirty)) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+        return;
+    }
+
+    const win = window.__TAURI__.window.getCurrentWindow();
+    win.onCloseRequested(async (event) => {
+        event.preventDefault();
+        if (closingInProgress) return;
+        closingInProgress = true;
+        try {
+            const canClose = await confirmCloseAllTabs();
+            if (canClose) {
+                await win.destroy();
+            }
+        } finally {
+            closingInProgress = false;
+        }
+    }).catch(err => console.error('注册窗口关闭处理失败:', err));
+}
+
+setupWindowCloseHandler();
