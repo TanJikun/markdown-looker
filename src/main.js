@@ -26,6 +26,180 @@ self.MonacoEnvironment = {
     getWorker() { return new editorWorker(); }
 };
 
+// =========================================================
+// 自定义 Monaco 主题：把编辑器的基础色全部对齐到右栏渲染的 CSS 变量
+// 深色：--bg #0D1117 / --text #e6edf3 / --border #3D444D / --panel #0D1117 / --muted #8b949e / --accent #58a6ff
+// 浅色：--bg #ffffff / --text #1f2328 / --border #454C54 / --panel #ffffff / --muted #656d76 / --accent #0969da
+// base 继承 vs-dark / vs，语法高亮 token 色保留，只覆盖基础前景与 UI 部件颜色。
+// =========================================================
+monaco.editor.defineTheme('markdown-looker-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+        { token: '', foreground: 'e6edf3' },
+    ],
+    colors: {
+        // —— 编辑器主体 ——
+        'editor.background': '#0D1117',
+        'editor.foreground': '#e6edf3',
+        'editorCursor.foreground': '#58a6ff',
+        'editor.selectionBackground': '#264F78',
+        'editor.inactiveSelectionBackground': '#1c2b3a',
+        'editor.selectionHighlightBackground': '#264F7855',
+        'editor.wordHighlightBackground': '#264F7855',
+        'editor.wordHighlightStrongBackground': '#264F7880',
+        'editor.findMatchBackground': '#58a6ff44',
+        'editor.findMatchHighlightBackground': '#58a6ff22',
+        'editor.lineHighlightBackground': '#151B23',
+        'editor.lineHighlightBorder': '#00000000',
+        'editor.rangeHighlightBackground': '#58a6ff14',
+
+        // —— Gutter / 缩进 / 空白 ——
+        'editorGutter.background': '#0D1117',
+        'editorLineNumber.foreground': '#484f58',
+        'editorLineNumber.activeForeground': '#8b949e',
+        'editorIndentGuide.background1': '#21262d',
+        'editorIndentGuide.activeBackground1': '#3D444D',
+        'editorWhitespace.foreground': '#3D444D',
+        'editorRuler.foreground': '#3D444D',
+
+        // —— 滚动条（对应右侧 ::-webkit-scrollbar-thumb） ——
+        'scrollbarSlider.background': '#484f58b3',
+        'scrollbarSlider.hoverBackground': '#484f58e6',
+        'scrollbarSlider.activeBackground': '#484f58',
+        'scrollbar.shadow': '#00000000',
+
+        // —— 概览尺：彻底关闭装饰，避免滚动条顶部出现多余标记 ——
+        'editorOverviewRuler.border': '#00000000',
+        'editorOverviewRuler.background': '#0D1117',
+        'editorOverviewRuler.currentContentForeground': '#00000000',
+        'editorOverviewRuler.incomingContentForeground': '#00000000',
+        'editorOverviewRuler.commonContentForeground': '#00000000',
+
+        // —— 悬浮控件 / 输入框 / 菜单 ——
+        'editorWidget.background': '#0D1117',
+        'editorWidget.border': '#3D444D',
+        'editorWidget.foreground': '#e6edf3',
+        'editorHoverWidget.background': '#0D1117',
+        'editorHoverWidget.border': '#3D444D',
+        'editorHoverWidget.foreground': '#e6edf3',
+        'editorSuggestWidget.background': '#0D1117',
+        'editorSuggestWidget.border': '#3D444D',
+        'editorSuggestWidget.selectedBackground': '#151B23',
+        'editorSuggestWidget.foreground': '#e6edf3',
+        'editorSuggestWidget.highlightForeground': '#58a6ff',
+        'input.background': '#0D1117',
+        'input.border': '#3D444D',
+        'input.foreground': '#e6edf3',
+        'input.placeholderForeground': '#8b949e',
+        'focusBorder': '#3D444D',
+        'menu.background': '#0D1117',
+        'menu.border': '#3D444D',
+        'menu.foreground': '#e6edf3',
+        'menu.selectionBackground': '#151B23',
+        'menu.selectionForeground': '#e6edf3',
+        'menu.separatorBackground': '#3D444D',
+        'list.hoverBackground': '#151B23',
+        'list.activeSelectionBackground': '#151B23',
+        'list.activeSelectionForeground': '#e6edf3',
+        'list.inactiveSelectionBackground': '#0D1117',
+
+        // —— 括号匹配 ——
+        'editorBracketMatch.background': '#264F78',
+        'editorBracketMatch.border': '#58a6ff',
+
+        // —— 链接 ——
+        'editorLink.activeForeground': '#58a6ff',
+        'textLink.foreground': '#58a6ff',
+        'textLink.activeForeground': '#58a6ff',
+
+        // —— 通用 ——
+        'foreground': '#e6edf3',
+        'descriptionForeground': '#8b949e',
+        'errorForeground': '#f85149',
+    }
+});
+
+monaco.editor.defineTheme('markdown-looker-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+        { token: '', foreground: '1f2328' },
+    ],
+    colors: {
+        'editor.background': '#ffffff',
+        'editor.foreground': '#1f2328',
+        'editorCursor.foreground': '#0969da',
+        'editor.selectionBackground': '#b6d7ff',
+        'editor.inactiveSelectionBackground': '#ddf4ff',
+        'editor.selectionHighlightBackground': '#b6d7ff88',
+        'editor.wordHighlightBackground': '#b6d7ff88',
+        'editor.wordHighlightStrongBackground': '#b6d7ffaa',
+        'editor.findMatchBackground': '#0969da33',
+        'editor.findMatchHighlightBackground': '#0969da22',
+        'editor.lineHighlightBackground': '#f6f8fa',
+        'editor.lineHighlightBorder': '#00000000',
+        'editor.rangeHighlightBackground': '#0969da14',
+
+        'editorGutter.background': '#ffffff',
+        'editorLineNumber.foreground': '#8c959f',
+        'editorLineNumber.activeForeground': '#656d76',
+        'editorIndentGuide.background1': '#d8dee4',
+        'editorIndentGuide.activeBackground1': '#a0a8b0',
+        'editorWhitespace.foreground': '#d0d7de',
+        'editorRuler.foreground': '#d0d7de',
+
+        'scrollbarSlider.background': '#d0d7deb3',
+        'scrollbarSlider.hoverBackground': '#d0d7dee6',
+        'scrollbarSlider.activeBackground': '#d0d7de',
+        'scrollbar.shadow': '#00000000',
+
+        'editorOverviewRuler.border': '#00000000',
+        'editorOverviewRuler.background': '#ffffff',
+        'editorOverviewRuler.currentContentForeground': '#00000000',
+        'editorOverviewRuler.incomingContentForeground': '#00000000',
+        'editorOverviewRuler.commonContentForeground': '#00000000',
+
+        'editorWidget.background': '#ffffff',
+        'editorWidget.border': '#d0d7de',
+        'editorWidget.foreground': '#1f2328',
+        'editorHoverWidget.background': '#ffffff',
+        'editorHoverWidget.border': '#d0d7de',
+        'editorHoverWidget.foreground': '#1f2328',
+        'editorSuggestWidget.background': '#ffffff',
+        'editorSuggestWidget.border': '#d0d7de',
+        'editorSuggestWidget.selectedBackground': '#f6f8fa',
+        'editorSuggestWidget.foreground': '#1f2328',
+        'editorSuggestWidget.highlightForeground': '#0969da',
+        'input.background': '#ffffff',
+        'input.border': '#d0d7de',
+        'input.foreground': '#1f2328',
+        'input.placeholderForeground': '#656d76',
+        'focusBorder': '#d0d7de',
+        'menu.background': '#ffffff',
+        'menu.border': '#d0d7de',
+        'menu.foreground': '#1f2328',
+        'menu.selectionBackground': '#f6f8fa',
+        'menu.selectionForeground': '#1f2328',
+        'menu.separatorBackground': '#d0d7de',
+        'list.hoverBackground': '#f6f8fa',
+        'list.activeSelectionBackground': '#f6f8fa',
+        'list.activeSelectionForeground': '#1f2328',
+        'list.inactiveSelectionBackground': '#ffffff',
+
+        'editorBracketMatch.background': '#b6d7ff',
+        'editorBracketMatch.border': '#0969da',
+
+        'editorLink.activeForeground': '#0969da',
+        'textLink.foreground': '#0969da',
+        'textLink.activeForeground': '#0969da',
+
+        'foreground': '#1f2328',
+        'descriptionForeground': '#656d76',
+        'errorForeground': '#cf222e',
+    }
+});
+
 marked.use(
     markedHighlight({
         langPrefix: 'language-',
@@ -59,24 +233,44 @@ let suppressContentChange = false;
 const editor = monaco.editor.create(document.getElementById('editor-container'), {
     value: "# 欢迎使用\n左侧编辑，右侧同步预览。",
     language: 'markdown',
-    theme: 'vs-dark',
+    theme: 'markdown-looker-dark',
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     automaticLayout: true,
-    scrollbar: { vertical: 'visible', horizontal: 'visible' },
+    // 滚动条：12px 轨道 + 6px 滑块，对齐右栏 ::-webkit-scrollbar；
+    // useShadows: false 关闭滚动时顶部的渐隐阴影；
+    // alwaysConsumeMouseWheel: false 让滚轮在边界处不被吃掉；
+    // arrowSize: 0 隐藏轨道两端的箭头（右栏没有）。
+    scrollbar: {
+        vertical: 'visible',
+        horizontal: 'visible',
+        verticalScrollbarSize: 12,
+        horizontalScrollbarSize: 12,
+        verticalSliderSize: 6,
+        horizontalSliderSize: 6,
+        useShadows: false,
+        alwaysConsumeMouseWheel: false,
+        arrowSize: 0,
+    },
     wordWrap: 'on',
     hover: { enabled: false },
     quickSuggestions: false,
     suggestOnTriggerCharacters: false,
     folding: false,
-    lineNumbers: 'off',
+    // 行号：Monaco 原生按“逻辑行”编号——wordWrap 折行出的视觉行不会累加行号。
+    // lineNumbersMinChars: 3 保证 1~999 行时行号区宽度稳定，不抖动。
+    lineNumbers: 'on',
+    lineNumbersMinChars: 3,
     renderLineHighlight: 'line',
     cursorBlinking: 'smooth',
     cursorSmoothCaretAnimation: 'on',
     smoothScrolling: true,
+    // 左右各 16：左侧让行号适度贴边，右侧给 12px 滚动条留出 4px 呼吸
     padding: { top: 24, bottom: 24, left: 16, right: 16 },
-    fontFamily: 'Consolas, "Courier New", monospace',
-    fontSize: 15
+    fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace',
+    fontSize: 16,
+    lineHeight: 26,
+    fontLigatures: false
 });
 
 const outputEl = document.getElementById('output');
@@ -102,7 +296,6 @@ const wheelTick = () => {
     const target = wheelTargetTop ?? current;
     const diff = target - current;
 
-    // 接近目标就吸附并结束
     if (Math.abs(diff) < 0.5) {
         editor.setScrollPosition(
             { scrollTop: target },
@@ -113,7 +306,6 @@ const wheelTick = () => {
         return;
     }
 
-    // 指数缓动：每帧逼近目标的 22%，约 150~200ms 到位
     editor.setScrollPosition(
         { scrollTop: current + diff * 0.22 },
         monaco.editor.ScrollType.Immediate
@@ -121,25 +313,20 @@ const wheelTick = () => {
     wheelRaf = requestAnimationFrame(wheelTick);
 };
 
-// 用 document 的捕获阶段监听，保证先于 Monaco 内部 wheel 处理器执行
 document.addEventListener('wheel', (e) => {
     if (!editorDom || !editorDom.contains(e.target)) return;
-
-    // 保留 Ctrl（缩放）、Shift（横向滚动）、Alt 等默认行为
     if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    // 归一化 deltaY（像素 / 行 / 页）
     let delta = e.deltaY;
-    if (e.deltaMode === 1) delta *= 16;       // DOM_DELTA_LINE
-    else if (e.deltaMode === 2) delta *= 100; // DOM_DELTA_PAGE
+    if (e.deltaMode === 1) delta *= 16;
+    else if (e.deltaMode === 2) delta *= 100;
 
     const lineHeight =
-        editor.getOption(monaco.editor.EditorOption.lineHeight) || 19;
+        editor.getOption(monaco.editor.EditorOption.lineHeight) || 26;
 
-    // 一格滚轮 ≈ 3 行（与 Monaco 默认手感一致）
     const scrollDelta = (delta / 100) * lineHeight * 3;
 
     const current = editor.getScrollTop();
@@ -157,7 +344,6 @@ document.addEventListener('wheel', (e) => {
 
 // --- Mermaid 全屏逻辑 ---
 let mermaidFsOverlay = null;
-/** window 级监听器的清理函数集合（overlay 内部监听器随 overlay.remove() 一起销毁） */
 let mermaidFsCleanup = [];
 
 function closeMermaidFullscreen() {
@@ -165,7 +351,6 @@ function closeMermaidFullscreen() {
         mermaidFsOverlay.remove();
         mermaidFsOverlay = null;
     }
-    // 与 showMermaidFullscreen 中注册的捕获阶段保持一致
     document.removeEventListener('keydown', mermaidFsEscHandler, true);
     for (const fn of mermaidFsCleanup) {
         try { fn(); } catch (e) { /* noop */ }
@@ -202,7 +387,6 @@ function showMermaidFullscreen(svgHtml) {
     overlay.appendChild(content);
     overlay.appendChild(closeBtn);
 
-    // 必须挂到 DOM 才能读到 content.clientWidth / clientHeight
     document.body.appendChild(overlay);
     mermaidFsOverlay = overlay;
 
@@ -211,16 +395,13 @@ function showMermaidFullscreen(svgHtml) {
     let scale = 1;
     const MIN_SCALE = 0.2;
     const MAX_SCALE = 10;
-    /** "fit contain" 后的基础像素尺寸；实际显示尺寸 = base * scale */
     let baseW = 1;
     let baseH = 1;
 
-    // 依据 SVG 宽高比计算 contain 后的基础尺寸，使其刚好塞入可用区域
     const computeBase = () => {
         const cs = getComputedStyle(content);
         const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
         const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-        // 减 1 避免亚像素导致恰好出现滚动条
         const availW = Math.max(1, content.clientWidth - padX - 1);
         const availH = Math.max(1, content.clientHeight - padY - 1);
 
@@ -238,22 +419,18 @@ function showMermaidFullscreen(svgHtml) {
 
         if (aspect && isFinite(aspect) && aspect > 0) {
             if (availW / availH > aspect) {
-                // 高度受限
                 baseH = availH;
                 baseW = availH * aspect;
             } else {
-                // 宽度受限
                 baseW = availW;
                 baseH = availW / aspect;
             }
         } else {
-            // 拿不到宽高比，退化为容器填充
             baseW = availW;
             baseH = availH;
         }
     };
 
-    // 根据是否溢出切换光标（default / grab），拖动时由 .dragging 覆盖为 grabbing
     const updateCursor = () => {
         const canX = content.scrollWidth > content.clientWidth + 1;
         const canY = content.scrollHeight > content.clientHeight + 1;
@@ -262,28 +439,19 @@ function showMermaidFullscreen(svgHtml) {
 
     const applyScale = () => {
         if (!svgEl) return;
-        // 关键：Mermaid 生成的 SVG 带有内联 max-width（如 max-width: 1234px），
-        // 内联样式优先级高于外部 CSS，必须显式清掉，否则放大无效（只能缩不能放）。
         svgEl.style.maxWidth = 'none';
         svgEl.style.maxHeight = 'none';
         svgEl.style.width = (baseW * scale) + 'px';
         svgEl.style.height = (baseH * scale) + 'px';
-        // set 样式后读 scrollWidth 会触发同步重排，能读到最新值
         updateCursor();
     };
 
-    // 初始：铺满屏幕
     computeBase();
     applyScale();
 
-    // --- Ctrl + 滚轮 = 只缩放 ---
-    // 双保险：
-    //  a) content 在 capture 阶段拦截（preventDefault 阻止默认滚动）
-    //  b) overlay 在冒泡阶段拦截（Ctrl 按住时 pointer-events:none 让 target 落到 overlay）
-    // 通过 e.defaultPrevented 去重，保证缩放只执行一次。
     const handleZoomWheel = (e) => {
-        if (!e.ctrlKey && !e.metaKey) return;  // 非 Ctrl：交给原生滚动
-        if (e.defaultPrevented) return;        // 已被另一层处理
+        if (!e.ctrlKey && !e.metaKey) return;
+        if (e.defaultPrevented) return;
         e.preventDefault();
         e.stopPropagation();
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
@@ -295,9 +463,6 @@ function showMermaidFullscreen(svgHtml) {
     content.addEventListener('wheel', handleZoomWheel, { passive: false, capture: true });
     overlay.addEventListener('wheel', handleZoomWheel, { passive: false });
 
-    // --- Ctrl 按住期间屏蔽 content 的鼠标事件 ---
-    // 这样 wheel 的 hit-test 会落到 overlay 上，content 不在 target 的滚动容器祖先链里，
-    // WebView2 的 Ctrl+滚轮就不会把 content 当成滚动目标（从根上杜绝滚动）。
     const setCtrlHeld = (held) => {
         content.classList.toggle('ctrl-held', held);
     };
@@ -313,7 +478,6 @@ function showMermaidFullscreen(svgHtml) {
     window.addEventListener('keyup', onCtrlKeyUp, true);
     window.addEventListener('blur', onWindowBlur);
 
-    // --- 鼠标拖动平移（走 scrollLeft/scrollTop，保留滚动条手感） ---
     let dragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
@@ -322,7 +486,6 @@ function showMermaidFullscreen(svgHtml) {
 
     const onContentMouseDown = (e) => {
         if (e.button !== 0) return;
-        // 内容没溢出就没得拖
         if (!content.classList.contains('scrollable')) return;
         dragging = true;
         dragStartX = e.clientX;
@@ -349,7 +512,6 @@ function showMermaidFullscreen(svgHtml) {
     window.addEventListener('mousemove', onWindowMouseMove);
     window.addEventListener('mouseup', onWindowMouseUp);
 
-    // --- 窗口尺寸变化时按当前 scale 重新适配 ---
     const onResize = () => {
         if (!svgEl) return;
         computeBase();
@@ -357,7 +519,6 @@ function showMermaidFullscreen(svgHtml) {
     };
     window.addEventListener('resize', onResize);
 
-    // 注册 window 级清理
     mermaidFsCleanup.push(() => {
         content.removeEventListener('mousedown', onContentMouseDown);
         window.removeEventListener('mousemove', onWindowMouseMove);
@@ -368,12 +529,10 @@ function showMermaidFullscreen(svgHtml) {
         window.removeEventListener('blur', onWindowBlur);
     });
 
-    // 点击遮罩关闭
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) closeMermaidFullscreen();
     });
 
-    // 捕获阶段监听，避免 Monaco 等内部组件 stopPropagation 吞掉 Esc
     document.addEventListener('keydown', mermaidFsEscHandler, true);
 }
 
@@ -410,7 +569,6 @@ function showCopiedFeedback(btn) {
     }, 2000);
 }
 
-// 给代码块加复制按钮
 function enhanceCodeBlocks(container) {
     container.querySelectorAll('pre').forEach(pre => {
         if (pre.parentElement.classList.contains('code-block-wrapper')) return;
@@ -439,7 +597,6 @@ function enhanceCodeBlocks(container) {
     });
 }
 
-// 给流程图加 放大 和 复制 按钮
 function enhanceMermaidBlocks(container) {
     container.querySelectorAll('.mermaid-wrapper').forEach(wrapper => {
         if (wrapper.dataset.buttonsDone) return;
@@ -494,7 +651,6 @@ function enhanceMermaidBlocks(container) {
 }
 
 // --- 核心渲染流程 ---
-// 每次渲染递增，旧的异步 Mermaid 渲染发现序号不一致就放弃，避免并发竞态。
 let previewSeq = 0;
 
 const updatePreview = async (markdown) => {
@@ -510,11 +666,8 @@ const updatePreview = async (markdown) => {
     html = sanitizePreviewHtml(html);
     outputEl.innerHTML = html;
 
-    // 1) 先给顶层块打 source-line（此时 Mermaid 还是 <pre><code>）
     annotateSourceLines(outputEl, markdown);
 
-    // 2) 同步把 Mermaid 代码块替换成占位 wrapper：
-    //    复制 data-source-line，保留源码；给最小高度，锚点不会断。
     const mermaidBlocks = outputEl.querySelectorAll('code.language-mermaid');
     const mermaidJobs = [];
     mermaidBlocks.forEach((block, i) => {
@@ -530,15 +683,9 @@ const updatePreview = async (markdown) => {
         mermaidJobs.push({ wrapper, code, i });
     });
 
-    // 3) 给普通代码块加复制按钮（Mermaid 已被替换，不会误加）
     enhanceCodeBlocks(outputEl);
-
-    // 4) 先基于占位 wrapper 建一次锚点：
-    //    保证警示块之后（Mermaid 区域、公式区域）都有锚点，
-    //    不会只剩“警示块 → 末尾控制点”导致预览几乎不动。
     scrollSync.rebuildAnchors();
 
-    // 5) 异步串行渲染 Mermaid
     for (const job of mermaidJobs) {
         if (seq !== previewSeq) return;
         try {
@@ -557,10 +704,7 @@ const updatePreview = async (markdown) => {
 
     if (seq !== previewSeq) return;
 
-    // 6) 给渲染后的 Mermaid wrapper 加放大/复制按钮
     enhanceMermaidBlocks(outputEl);
-
-    // 7) 用真实高度重建锚点
     scrollSync.rebuildAnchors();
 };
 
@@ -622,7 +766,7 @@ document.querySelectorAll('.theme-option').forEach(btn => {
         e.stopPropagation();
         const isDark = btn.dataset.theme === 'dark';
         document.documentElement.classList.toggle('light', !isDark);
-        monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs');
+        monaco.editor.setTheme(isDark ? 'markdown-looker-dark' : 'markdown-looker-light');
         mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'strict' });
         updatePreview(editor.getValue());
     });
@@ -665,7 +809,6 @@ async function handleSave(saveAs = false) {
 
     const content = editor.getValue();
 
-    // 浏览器 dev 模式：没有 Tauri，降级为下载
     if (!isTauri) {
         const blob = new Blob([content], { type: 'text/markdown' });
         const url = URL.createObjectURL(blob);

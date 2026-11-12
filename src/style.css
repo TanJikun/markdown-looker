@@ -3,16 +3,26 @@
    ========================================================= */
 html {
     --bg: #0D1117;
-    --panel: #161B22;
+    --panel: #0D1117;
+    /* 深色：所有 UI 面板统一为 #0D1117 */
     --border: #3D444D;
     --text: #e6edf3;
     --muted: #8b949e;
     --accent: #58a6ff;
     --tab-bg: #0D1117;
-    --tab-active-bg: #161B22;
-    --hover-bg: #1c2128;
+    --tab-active-bg: #0D1117;
+    --hover-bg: #151B23;
+    /* hover 交互反馈，保持微妙可见 */
     --scroll-track: #0D1117;
     --scroll-thumb: #484f58;
+
+    /* 表格斑马纹 */
+    --table-header-bg: #0D1117;
+    --table-odd-bg: #0D1117;
+    --table-even-bg: #151B23;
+
+    /* 代码块背景 */
+    --code-bg: #151B23;
 }
 
 html.light {
@@ -27,6 +37,12 @@ html.light {
     --hover-bg: #f6f8fa;
     --scroll-track: #ffffff;
     --scroll-thumb: #d0d7de;
+
+    --table-header-bg: #ffffff;
+    --table-odd-bg: transparent;
+    --table-even-bg: transparent;
+
+    --code-bg: #f6f8fa;
 }
 
 * {
@@ -189,6 +205,7 @@ body {
     width: 50%;
     height: 100%;
     border-right: 1px solid var(--border);
+    background: var(--bg);
 }
 
 #preview {
@@ -245,10 +262,12 @@ body {
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+/* 代码块：无边框、无圆角，只有背景色 */
 #output pre {
-    background-color: var(--panel);
+    background-color: var(--code-bg);
     padding: 16px;
-    border-radius: 6px;
+    border: none;
+    border-radius: 0;
     overflow: auto;
     margin-bottom: 16px;
 }
@@ -280,8 +299,16 @@ body {
 }
 
 #output th {
-    background-color: var(--panel);
+    background-color: var(--table-header-bg);
     font-weight: 600;
+}
+
+#output tbody tr:nth-child(odd) {
+    background-color: var(--table-odd-bg);
+}
+
+#output tbody tr:nth-child(even) {
+    background-color: var(--table-even-bg);
 }
 
 #output ul,
@@ -299,6 +326,16 @@ body {
 
 #output img {
     max-width: 100%;
+}
+
+/* =========================================================
+   3.1 Monaco 滚动条外观对齐右栏
+   右栏原生滚动条：12px 宽轨道、thumb 6px 圆角、hover 变 muted。
+   Monaco 的滑块宽度已经由 scrollbar.verticalSliderSize=6 控制，
+   但默认没有圆角，这里补上 6px 圆角，视觉上与右栏一致。
+   ========================================================= */
+#editor-container .monaco-scrollable-element>.scrollbar>.slider {
+    border-radius: 6px !important;
 }
 
 /* =========================================================
@@ -382,12 +419,10 @@ body {
     height: auto;
 }
 
-/* 右上角最外侧：复制按钮 */
 .mermaid-copy-btn {
     position: absolute;
     top: 8px;
     right: 8px;
-    /* 移到右侧 */
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -406,13 +441,11 @@ body {
     color: var(--text);
 }
 
-/* 提示气泡 */
 .mermaid-copy-btn::after {
     content: "复制图表代码";
     position: absolute;
     top: -32px;
     right: 0;
-    /* 气泡靠右对齐 */
     background: var(--text);
     color: var(--bg);
     padding: 4px 8px;
@@ -435,12 +468,10 @@ body {
     display: none;
 }
 
-/* 右上角偏左侧：放大按钮 */
 .mermaid-expand-btn {
     position: absolute;
     top: 8px;
     right: 40px;
-    /* 放在复制按钮左边 */
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -459,7 +490,6 @@ body {
     color: var(--text);
 }
 
-/* 放大按钮的提示气泡 (可选，如果不需要可以删掉) */
 .mermaid-expand-btn::after {
     content: "全屏查看";
     position: absolute;
@@ -564,8 +594,6 @@ body {
     z-index: 9999;
 }
 
-/* 用 block + overflow:auto，方便拖动/滚动查看放大的 SVG。
-   宽高由 JS 按 SVG viewBox 计算 contain 后写入内联样式。 */
 #mermaid-fs-content {
     width: 100%;
     height: 100%;
@@ -576,7 +604,6 @@ body {
     user-select: none;
 }
 
-/* 内容溢出时显示抓手光标（可拖动）；拖动中由 .dragging 覆盖 */
 #mermaid-fs-content.scrollable {
     cursor: grab;
 }
@@ -585,9 +612,6 @@ body {
     cursor: grabbing;
 }
 
-/* Ctrl 按住期间屏蔽 content 的鼠标事件：
-   wheel 的 hit-test 会落到 overlay 上，content 不再被当作滚动目标，
-   从而确保 Ctrl+滚轮只缩放、绝不滚动。 */
 #mermaid-fs-content.ctrl-held {
     pointer-events: none;
 }
@@ -595,8 +619,6 @@ body {
 #mermaid-fs-content svg {
     display: block;
     margin: 0 auto;
-    /* !important 兜底：Mermaid 生成的 SVG 带内联 max-width，
-       内联样式优先级高于此处，必须用 !important 才能清掉 */
     max-width: none !important;
     max-height: none !important;
 }
