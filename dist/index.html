@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8">
   <title>Markdown Looker</title>
-  <script type="module" crossorigin src="/assets/index-CJKHyjG_.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-C9fl3vK9.css">
+  <script type="module" crossorigin src="/assets/index-Di-nk8kO.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CXxTSpYB.css">
 </head>
 
 <body>
@@ -17,8 +17,14 @@
         <button id="menu-save">保存 <span class="shortcut">Ctrl+S</span></button>
         <button id="menu-save-as">另存为 <span class="shortcut">Ctrl+Shift+S</span></button>
         <hr>
-        <button class="theme-option" data-theme="dark">深色</button>
-        <button class="theme-option" data-theme="light">浅色</button>
+        <div class="theme-menu">
+          <button id="theme-menu-btn">主题 <span class="submenu-arrow">▸</span></button>
+          <div id="theme-submenu">
+            <button class="theme-option" data-theme="system">跟随系统</button>
+            <button class="theme-option" data-theme="dark">深色</button>
+            <button class="theme-option" data-theme="light">浅色</button>
+          </div>
+        </div>
       </div>
     </div>
     <div id="tabs-container"></div>

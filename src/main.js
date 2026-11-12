@@ -27,6 +27,38 @@ self.MonacoEnvironment = {
 };
 
 // =========================================================
+// 主题：'system' | 'dark' | 'light'
+// 默认跟随系统；持久化到 localStorage，Tauri 下同时写入 config.json
+// =========================================================
+const THEME_STORAGE_KEY = 'markdown-looker-theme';
+const VALID_THEMES = ['system', 'dark', 'light'];
+const systemDarkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+function normalizeTheme(theme) {
+    return VALID_THEMES.includes(theme) ? theme : 'system';
+}
+
+function resolveTheme(theme) {
+    const t = normalizeTheme(theme);
+    if (t === 'system') return systemDarkQuery.matches ? 'dark' : 'light';
+    return t;
+}
+
+function readCachedTheme() {
+    try {
+        return normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY));
+    } catch (e) {
+        return 'system';
+    }
+}
+
+let currentTheme = readCachedTheme();
+let initialResolvedTheme = resolveTheme(currentTheme);
+
+// 立即把浅色 class 挂上，避免启动闪烁
+document.documentElement.classList.toggle('light', initialResolvedTheme === 'light');
+
+// =========================================================
 // 自定义 Monaco 主题：把编辑器的基础色全部对齐到右栏渲染的 CSS 变量
 // 深色：--bg #0D1117 / --text #e6edf3 / --border #3D444D / --panel #0D1117 / --muted #8b949e / --accent #58a6ff
 // 浅色：--bg #ffffff / --text #1f2328 / --border #454C54 / --panel #ffffff / --muted #656d76 / --accent #0969da
@@ -217,7 +249,11 @@ marked.use(
     { gfm: true, breaks: true }
 );
 
-mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
+mermaid.initialize({
+    startOnLoad: false,
+    theme: initialResolvedTheme === 'dark' ? 'dark' : 'default',
+    securityLevel: 'strict'
+});
 
 const isTauri = window.__TAURI__ !== undefined;
 let invoke, listen;
@@ -233,7 +269,7 @@ let suppressContentChange = false;
 const editor = monaco.editor.create(document.getElementById('editor-container'), {
     value: "# 欢迎使用\n左侧编辑，右侧同步预览。",
     language: 'markdown',
-    theme: 'markdown-looker-dark',
+    theme: initialResolvedTheme === 'dark' ? 'markdown-looker-dark' : 'markdown-looker-light',
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     automaticLayout: true,
@@ -760,16 +796,103 @@ function renderTabsUI() {
     });
 }
 
-// --- 主题切换 ---
+// --- 主题应用 / 持久化 ---
+function updateThemeMenuUI() {
+    document.querySelectorAll('.theme-option').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === currentTheme);
+    });
+}
+
+function syncWindowTheme(resolved) {
+    if (!isTauri) return;
+    try {
+        const win = window.__TAURI__.window.getCurrentWindow();
+        // 传具体值，确保浅色模式下标题栏也变浅
+        win.setTheme(resolved).catch(err => console.error('setTheme 失败:', err));
+    } catch (e) {
+        console.error('获取窗口失败:', e);
+    }
+}
+
+async function persistTheme(theme) {
+    try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (e) { /* noop */ }
+
+    if (isTauri) {
+        try {
+            await invoke('save_config', { config: { theme } });
+        } catch (e) {
+            console.error('保存主题配置失败:', e);
+        }
+    }
+}
+
+function applyTheme(theme, { persist = true } = {}) {
+    const next = normalizeTheme(theme);
+    currentTheme = next;
+    const resolved = resolveTheme(next);
+
+    document.documentElement.classList.toggle('light', resolved === 'light');
+
+    monaco.editor.setTheme(
+        resolved === 'dark' ? 'markdown-looker-dark' : 'markdown-looker-light'
+    );
+
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: resolved === 'dark' ? 'dark' : 'default',
+        securityLevel: 'strict'
+    });
+
+    syncWindowTheme(resolved);
+    updateThemeMenuUI();
+
+    if (persist) {
+        persistTheme(next);
+    }
+
+    updatePreview(editor.getValue());
+}
+
+async function loadPersistedTheme() {
+    if (isTauri) {
+        try {
+            const cfg = await invoke('load_config');
+            const theme = normalizeTheme(cfg && cfg.theme);
+            try {
+                localStorage.setItem(THEME_STORAGE_KEY, theme);
+            } catch (e) { /* noop */ }
+            return theme;
+        } catch (e) {
+            console.error('读取主题配置失败:', e);
+        }
+    }
+    return readCachedTheme();
+}
+
+async function initTheme() {
+    const persisted = await loadPersistedTheme();
+    if (persisted !== currentTheme) {
+        applyTheme(persisted, { persist: false });
+    } else {
+        // 即使主题相同，也同步一次标题栏和菜单选中态
+        syncWindowTheme(resolveTheme(currentTheme));
+        updateThemeMenuUI();
+    }
+}
+
 document.querySelectorAll('.theme-option').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const isDark = btn.dataset.theme === 'dark';
-        document.documentElement.classList.toggle('light', !isDark);
-        monaco.editor.setTheme(isDark ? 'markdown-looker-dark' : 'markdown-looker-light');
-        mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'strict' });
-        updatePreview(editor.getValue());
+        applyTheme(btn.dataset.theme);
     });
+});
+
+systemDarkQuery.addEventListener('change', () => {
+    if (currentTheme === 'system') {
+        applyTheme('system', { persist: false });
+    }
 });
 
 // --- 文件操作逻辑 ---
@@ -890,3 +1013,6 @@ if (isTauri) {
 } else {
     createTab("未命名 1.md", "# Markdown Looker\n开始写作吧！");
 }
+
+// 启动时从 config.json 同步主题（Tauri）或 localStorage（浏览器）
+initTheme();

@@ -92,10 +92,10 @@ npm run tauri build
 ```
 打包完成后，可执行文件将生成在 `src-tauri/target/release/` 目录下。
 
-## 🙏 致谢
+## 致谢
 
 - 感谢 [Nir-Bhay/markups](https://github.com/Nir-Bhay/markups) 项目提供的完美滚动同步解决方案（`scroll-sync` 及 `source-lines` 逻辑），本项目在此基础上进行了深度适配与重构。
 
-## 📄 License
+## License
 
 MIT License
