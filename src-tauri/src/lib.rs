@@ -21,15 +21,24 @@ struct FileData {
 pub struct AppConfig {
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_settings_window_ratio")]
+    pub settings_window_ratio: f64,
 }
 
 fn default_theme() -> String {
     "system".to_string()
 }
 
+fn default_settings_window_ratio() -> f64 {
+    0.8
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { theme: default_theme() }
+        Self {
+            theme: default_theme(),
+            settings_window_ratio: default_settings_window_ratio(),
+        }
     }
 }
 

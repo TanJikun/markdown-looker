@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <title>设置</title>
+  <script type="module" crossorigin src="/assets/settings-DU0hp4RZ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
+  <link rel="stylesheet" crossorigin href="/assets/settings-BKHld3tt.css">
+</head>
+
+<body>
+    <div class="settings-app">
+        <aside class="settings-sidebar">
+            <div class="settings-sidebar-title">设置</div>
+            <nav class="settings-nav">
+                <button type="button" class="settings-nav-item active" data-panel="appearance">外观</button>
+                <button type="button" class="settings-nav-item" data-panel="window-size">窗口大小</button>
+            </nav>
+        </aside>
+
+        <main class="settings-content">
+            <section class="settings-panel" data-panel="appearance">
+                <h2 class="settings-panel-title">外观</h2>
+                <div class="settings-field">
+                    <div class="settings-field-label">主题</div>
+                    <div class="settings-field-control">
+                        <div class="theme-group">
+                            <button type="button" class="theme-btn" data-theme="system">跟随系统</button>
+                            <button type="button" class="theme-btn" data-theme="dark">深色</button>
+                            <button type="button" class="theme-btn" data-theme="light">浅色</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-panel" data-panel="window-size" hidden>
+                <h2 class="settings-panel-title">窗口大小</h2>
+                <div class="settings-field">
+                    <div class="settings-field-label">
+                        设置窗口默认大小
+                        <span class="settings-hint">相对于主窗口</span>
+                    </div>
+                    <div class="settings-field-control">
+                        <input type="range" id="ratio-input" min="10" max="100" step="5" value="80">
+                        <span id="ratio-value" class="ratio-value">80%</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+</body>
+
+</html>

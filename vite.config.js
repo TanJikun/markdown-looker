@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
     clearScreen: false,
@@ -12,6 +13,11 @@ export default defineConfig({
         minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
         sourcemap: !!process.env.TAURI_ENV_DEBUG,
         rollupOptions: {
+            // 双入口：主窗口 + 设置窗口（设置窗口不加载 Monaco/Shiki/Mermaid）
+            input: {
+                main: fileURLToPath(new URL('./index.html', import.meta.url)),
+                settings: fileURLToPath(new URL('./settings.html', import.meta.url)),
+            },
             output: {
                 manualChunks(id) {
                     const n = id.replaceAll('\\', '/');

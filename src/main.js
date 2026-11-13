@@ -870,7 +870,7 @@ function showSaveConfirmDialog(tabName) {
         dialog.innerHTML = `
             <div class="save-confirm-message"></div>
             <div class="save-confirm-buttons">
-                <button type="button" class="save-confirm-cancel">取消</button>
+                <button type="button" class="save-confirm-cancel">不保存</button>
                 <button type="button" class="save-confirm-save">保存</button>
             </div>
         `;
@@ -942,13 +942,70 @@ function removeTab(tabId) {
     }
 }
 
-// --- 主题应用 / 持久化 ---
-function updateThemeMenuUI() {
-    document.querySelectorAll('.theme-option').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.theme === currentTheme);
-    });
+// --- 设置窗口 ---
+async function openSettingsWindow() {
+    if (!isTauri) return; // 浏览器环境没有独立窗口
+
+    const WebviewWindow = window.__TAURI__.webviewWindow.WebviewWindow;
+    const getCurrentWindow = window.__TAURI__.window.getCurrentWindow;
+
+    // 已开则聚焦
+    try {
+        const existing = await WebviewWindow.getByLabel('settings');
+        if (existing) {
+            await existing.setFocus();
+            return;
+        }
+    } catch (_) { /* noop */ }
+
+    // 读取配置里的 ratio，决定初始尺寸
+    let ratio = 0.8;
+    try {
+        const cfg = await invoke('load_config');
+        if (cfg && typeof cfg.settings_window_ratio === 'number') {
+            ratio = Math.max(0.1, Math.min(1, cfg.settings_window_ratio));
+        }
+    } catch (e) {
+        console.warn('读取窗口比例失败:', e);
+    }
+
+    // 按父窗口客户区 × ratio 计算（逻辑像素）
+    const parent = getCurrentWindow();
+    let w = 800;
+    let h = 600;
+    try {
+        const size = await parent.innerSize();
+        const sf = await parent.scaleFactor();
+        w = Math.max(480, Math.round((size.width / sf) * ratio));
+        h = Math.max(360, Math.round((size.height / sf) * ratio));
+    } catch (e) {
+        console.warn('读取窗口尺寸失败:', e);
+    }
+
+    try {
+        const win = new WebviewWindow('settings', {
+            url: 'settings.html',
+            title: '设置',
+            width: w,
+            height: h,
+            minWidth: 480,
+            minHeight: 360,
+            center: true,
+            resizable: true,
+            minimizable: false,
+            maximizable: false,
+            skipTaskbar: true,
+            parent: 'main', // 父窗口 label，任务栏只有一个图标
+        });
+        win.once('tauri://error', (e) => {
+            console.error('创建设置窗口失败:', e);
+        });
+    } catch (e) {
+        console.error('创建设置窗口异常:', e);
+    }
 }
 
+// --- 主题应用 / 持久化 ---
 /**
  * 将原始主题同步给原生窗口。
  * system -> null，让窗口恢复跟随系统；
@@ -985,7 +1042,6 @@ async function persistTheme(theme) {
 async function applyTheme(theme, { persist = true } = {}) {
     const next = normalizeTheme(theme);
     currentTheme = next;
-    updateThemeMenuUI();
 
     // 先把原始主题同步给原生窗口：system -> null
     await syncWindowTheme(next);
@@ -1042,16 +1098,8 @@ async function initTheme() {
     } else {
         // 传原始主题：system 时让窗口 setTheme(null) 跟随系统
         await syncWindowTheme(currentTheme);
-        updateThemeMenuUI();
     }
 }
-
-document.querySelectorAll('.theme-option').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        applyTheme(btn.dataset.theme);
-    });
-});
 
 systemDarkQuery.addEventListener('change', () => {
     if (currentTheme === 'system') {
@@ -1145,6 +1193,7 @@ async function handleSave(saveAs = false) {
 document.getElementById('menu-open').onclick = () => handleOpen();
 document.getElementById('menu-save').onclick = () => handleSave(false);
 document.getElementById('menu-save-as').onclick = () => handleSave(true);
+document.getElementById('menu-settings').onclick = () => openSettingsWindow();
 
 window.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -1167,6 +1216,14 @@ if (isTauri) {
             createTab(getFileName(path), fileData.content, path);
         } catch (e) {
             console.error('Open from event fail:', e);
+        }
+    });
+
+    // 设置窗口改主题时，主窗口只应用（持久化由设置窗口负责）
+    listen('settings:theme-changed', async (event) => {
+        const theme = event.payload && event.payload.theme;
+        if (theme) {
+            await applyTheme(theme, { persist: false });
         }
     });
 
