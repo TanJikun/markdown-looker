@@ -944,7 +944,7 @@ function removeTab(tabId) {
 
 // --- 设置窗口 ---
 async function openSettingsWindow() {
-    if (!isTauri) return; // 浏览器环境没有独立窗口
+    if (!isTauri) return;
 
     const WebviewWindow = window.__TAURI__.webviewWindow.WebviewWindow;
     const getCurrentWindow = window.__TAURI__.window.getCurrentWindow;
@@ -958,45 +958,57 @@ async function openSettingsWindow() {
         }
     } catch (_) { /* noop */ }
 
-    // 读取配置里的 ratio，决定初始尺寸
+    // 读取配置里的 ratio
     let ratio = 0.8;
     try {
         const cfg = await invoke('load_config');
         if (cfg && typeof cfg.settings_window_ratio === 'number') {
-            ratio = Math.max(0.1, Math.min(1, cfg.settings_window_ratio));
+            ratio = Math.max(0.4, Math.min(1, cfg.settings_window_ratio));
         }
     } catch (e) {
         console.warn('读取窗口比例失败:', e);
     }
 
-    // 按父窗口客户区 × ratio 计算（逻辑像素）
+    // 绝对居中计算：父窗口 outer 中心 - 新窗口尺寸/2
     const parent = getCurrentWindow();
-    let w = 800;
-    let h = 600;
+    let w = 800, h = 600, x = null, y = null;
     try {
-        const size = await parent.innerSize();
-        const sf = await parent.scaleFactor();
-        w = Math.max(480, Math.round((size.width / sf) * ratio));
-        h = Math.max(360, Math.round((size.height / sf) * ratio));
+        const [parentInnerSize, parentOuterPos, parentOuterSize, sf] = await Promise.all([
+            parent.innerSize(),
+            parent.outerPosition(),
+            parent.outerSize(),
+            parent.scaleFactor(),
+        ]);
+        w = Math.max(360, Math.round((parentInnerSize.width / sf) * ratio));
+        h = Math.max(260, Math.round((parentInnerSize.height / sf) * ratio));
+
+        const centerX = parentOuterPos.x + parentOuterSize.width / 2;
+        const centerY = parentOuterPos.y + parentOuterSize.height / 2;
+        x = Math.round(centerX - (w * sf) / 2);
+        y = Math.round(centerY - (h * sf) / 2);
     } catch (e) {
-        console.warn('读取窗口尺寸失败:', e);
+        console.warn('计算窗口尺寸失败:', e);
+    }
+
+    const opts = {
+        url: 'settings.html',
+        title: '设置',
+        width: w,
+        height: h,
+        resizable: false,       // 用户不可拖拽缩放手柄
+        decorations: false,     // 无原生标题栏 → 用户无法拖动窗口
+        minimizable: false,
+        maximizable: false,
+        skipTaskbar: true,
+        parent: 'main',
+    };
+    if (x !== null && y !== null) {
+        opts.x = x;
+        opts.y = y;
     }
 
     try {
-        const win = new WebviewWindow('settings', {
-            url: 'settings.html',
-            title: '设置',
-            width: w,
-            height: h,
-            minWidth: 480,
-            minHeight: 360,
-            center: true,
-            resizable: true,
-            minimizable: false,
-            maximizable: false,
-            skipTaskbar: true,
-            parent: 'main', // 父窗口 label，任务栏只有一个图标
-        });
+        const win = new WebviewWindow('settings', opts);
         win.once('tauri://error', (e) => {
             console.error('创建设置窗口失败:', e);
         });

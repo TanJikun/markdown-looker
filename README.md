@@ -1,5 +1,13 @@
 ## Markdown Looker
 
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="110" fill="#0D1117"/>
+  <rect x="64" y="80" width="176" height="352" rx="12" fill="#161B22" stroke="#58a6ff" stroke-width="6"/>
+  <rect x="272" y="80" width="176" height="352" rx="12" fill="#161B22" stroke="#58a6ff" stroke-width="6"/>
+  <path d="M110 160 L140 280 L170 160 L200 280" stroke="#58a6ff" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M310 170 L400 170 M310 210 L380 210 M310 250 L410 250 M310 290 L360 290" stroke="#8b949e" stroke-width="8" stroke-linecap="round"/>
+</svg>
+
 一个极简、优雅、且拥有**极致丝滑左右双向滚动同步**的本地 Markdown 桌面编辑器。
 
 基于 Tauri + Vite + 原生前端技术栈构建，拥有极低的内存占用和原生的性能体验。

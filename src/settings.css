@@ -32,12 +32,66 @@ body {
     color: var(--text);
     font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     overflow: hidden;
+    /* decorations:false 时，webview 是圆角矩形的，加个边框作为视觉分界 */
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
 
 /* ---------- 布局 ---------- */
 .settings-app {
     display: flex;
+    flex-direction: column;
     height: 100vh;
+}
+
+/* ---------- 自绘标题栏 ---------- */
+.settings-titlebar {
+    height: 36px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px 0 16px;
+    user-select: none;
+    /* 关键：禁用任何拖动相关的处理。用户无法通过这里拖窗口 */
+    -webkit-app-region: no-drag;
+}
+
+.settings-titlebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.settings-titlebar-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+}
+
+.settings-titlebar-close:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+}
+
+/* ---------- 主区域 ---------- */
+.settings-main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
 }
 
 .settings-sidebar {
@@ -45,18 +99,9 @@ body {
     flex-shrink: 0;
     background: var(--panel);
     border-right: 1px solid var(--border);
-    padding: 16px 0;
+    padding: 12px 0;
     display: flex;
     flex-direction: column;
-}
-
-.settings-sidebar-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    padding: 0 16px 10px;
-    letter-spacing: .6px;
-    text-transform: uppercase;
 }
 
 .settings-nav {
@@ -102,13 +147,13 @@ body {
 .settings-content {
     flex: 1;
     overflow: auto;
-    padding: 24px 32px;
+    padding: 20px 28px;
 }
 
 .settings-panel-title {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
-    margin: 0 0 20px;
+    margin: 0 0 16px;
 }
 
 /* ---------- 设置项 ---------- */
@@ -116,7 +161,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 16px 0;
+    padding: 14px 0;
     border-bottom: 1px solid var(--border);
 }
 

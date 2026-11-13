@@ -1,11 +1,7 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <!-- 背景圆角底板 -->
   <rect width="512" height="512" rx="110" fill="#0D1117"/>
-  <!-- 双栏分割，代表编辑器+预览 -->
   <rect x="64" y="80" width="176" height="352" rx="12" fill="#161B22" stroke="#58a6ff" stroke-width="6"/>
   <rect x="272" y="80" width="176" height="352" rx="12" fill="#161B22" stroke="#58a6ff" stroke-width="6"/>
-  <!-- Markdown 简易符号 M -->
   <path d="M110 160 L140 280 L170 160 L200 280" stroke="#58a6ff" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- 预览栏小页面符号 -->
   <path d="M310 170 L400 170 M310 210 L380 210 M310 250 L410 250 M310 290 L360 290" stroke="#8b949e" stroke-width="8" stroke-linecap="round"/>
 </svg>
