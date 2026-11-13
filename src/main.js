@@ -911,9 +911,11 @@ async function handleCloseTab(tabId) {
 
     if (tab.isDirty) {
         const action = await showSaveConfirmDialog(tab.name);
-        if (action === 'cancel') return;
-        const ok = await saveTab(tabId, false);
-        if (!ok) return; // 保存失败 / 取消保存对话框 => 中止关闭
+        if (action === 'save') {
+            const ok = await saveTab(tabId, false);
+            if (!ok) return; // 保存失败 / 用户在系统「另存为」里取消 => 中止关闭
+        }
+        // action === 'cancel' => 放弃保存，继续关闭
     }
 
     removeTab(tabId);
@@ -1196,9 +1198,11 @@ async function confirmCloseAllTabs() {
     const dirtyTabs = tabs.filter(t => t.isDirty);
     for (const tab of dirtyTabs) {
         const action = await showSaveConfirmDialog(tab.name);
-        if (action === 'cancel') return false;
-        const ok = await saveTab(tab.id, false);
-        if (!ok) return false;
+        if (action === 'save') {
+            const ok = await saveTab(tab.id, false);
+            if (!ok) return false; // 保存失败 / 系统保存框取消 => 中止关闭整个窗口
+        }
+        // action === 'cancel' => 放弃保存，继续问下一个脏标签
     }
     return true;
 }

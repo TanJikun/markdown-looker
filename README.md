@@ -234,8 +234,8 @@ Shiki 高亮器内置了一张别名映射表，以下写法可直接识别为�
 
 ## 致谢
 
-- 感谢 [Nir-Bhay/markups](https://github.com/Nir-Bhay/markups) 项目提供的完美滚动同步解决方案（`scroll-sync` 及 `source-lines` 逻辑），本项目在此基础上进行了深度适配与重构。
-- 感谢 [Shiki](https://shiki.style/) 与 [textmate-grammars-themes](https://github.com/shikijs/textmate-grammars-themes) 提供的高质量语法与主题资源。
+- 感谢 [Nir-Bhay/markups](https://github.com/Nir-Bhay/markups) 项目提供的滚动同步解决方案。
+- 感谢 [Shiki](https://shiki.style/) 与 [textmate-grammars-themes](https://github.com/shikijs/textmate-grammars-themes) 提供的语法与主题资源。
 
 ## License
 
