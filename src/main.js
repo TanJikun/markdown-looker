@@ -112,7 +112,6 @@ initShiki().catch(err => console.warn('[shiki] 初始化失败:', err));
 
 // =========================================================
 // 主题：'system' | 'dark' | 'light'
-// 默认跟随系统；持久化到 localStorage，Tauri 下同时写入 config.json
 // =========================================================
 const THEME_STORAGE_KEY = 'markdown-looker-theme';
 const VALID_THEMES = ['system', 'dark', 'light'];
@@ -326,8 +325,6 @@ if (isTauri) {
     listen = window.__TAURI__.event.listen;
 }
 
-// 切换标签时 editor.setValue() 会触发 onDidChangeModelContent，
-// 用这个标志抑制，避免把刚切过去的干净标签误标成 dirty。
 let suppressContentChange = false;
 
 const editor = monaco.editor.create(document.getElementById('editor-container'), {
@@ -373,10 +370,153 @@ const fallbackInput = document.getElementById('fallbackInput');
 
 scrollSync.initialize(editor, previewWrap, { contentRoot: outputEl });
 scrollSync.enable();
-// Markdown 工具栏
+
 initToolbar(editor, {
     refreshPreview: () => updatePreview(editor.getValue()),
 });
+
+// =========================================================
+// 图片粘贴处理
+// =========================================================
+
+function generateImageFileName(originalName) {
+    const now = new Date();
+    const timestamp = now.getFullYear().toString() +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0') +
+        String(now.getSeconds()).padStart(2, '0');
+
+    const extMatch = originalName.match(/\.([a-z0-9]+)$/i);
+    const ext = extMatch ? extMatch[1].toLowerCase() : 'png';
+    const base = originalName.replace(/\.[^.]+$/, '') || 'image';
+
+    return `${base}_${timestamp}.${ext}`;
+}
+
+function insertTextAtCursor(editor, text) {
+    const selection = editor.getSelection();
+    const id = { major: 1, minor: 1 };
+    const op = { identifier: id, range: selection, text: text, forceMoveMarkers: true };
+    editor.executeEdits('image-paste', [op]);
+    editor.focus();
+}
+
+function replacePlaceholder(editor, placeholder, replacement) {
+    const model = editor.getModel();
+    if (!model) return;
+
+    const matches = model.findMatches(placeholder, false, false, true, null, false);
+    if (matches.length > 0) {
+        const range = matches[0].range;
+        editor.executeEdits('image-replace', [{
+            range: range,
+            text: replacement,
+            forceMoveMarkers: true
+        }]);
+    }
+}
+
+async function handleImageFile(editor, file) {
+    const tauri = window.__TAURI__;
+    if (!tauri?.core?.invoke) return;
+
+    const fileName = generateImageFileName(file.name || 'image.png');
+    const placeholderId = `正在上传-${Date.now()}`;
+    const placeholder = `![正在上传](${placeholderId})`;
+
+    // 1. 立即插入占位符
+    insertTextAtCursor(editor, placeholder);
+
+    try {
+        // 2. 获取配置和当前文件路径
+        const config = await tauri.core.invoke('load_config');
+        const activeTab = tabs.find(t => t.id === activeTabId);
+        const mdPath = activeTab ? activeTab.path : null;
+
+        // 3. 读取二进制数据
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = Array.from(new Uint8Array(arrayBuffer));
+
+        // 4. 调用后端保存/上传
+        const resultUrl = await tauri.core.invoke('save_or_upload_image', {
+            config,
+            mdPath,
+            fileName,
+            bytes
+        });
+
+        // 5. 替换占位符
+        replacePlaceholder(editor, placeholder, `![图片](${resultUrl})`);
+    } catch (err) {
+        console.error('图片处理失败:', err);
+        replacePlaceholder(editor, placeholder, `![图片显示失败](上传失败: ${String(err)})`);
+    }
+}
+
+function setupImagePaster(editor) {
+    // 直接全局监听 paste 的捕获阶段，最稳定，能避开 Monaco 内部 textarea 的重新渲染
+    document.addEventListener('paste', async (e) => {
+        // 如果当前焦点不在编辑器内，或者编辑器只读，直接放行
+        if (!editor.hasTextFocus() || editor.getOption(monaco.editor.EditorOption.readOnly)) {
+            return;
+        }
+
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) return;
+
+        // 1. 检查是否有二进制图片
+        let imageFile = null;
+        const items = clipboardData.items;
+        if (items) {
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    imageFile = items[i].getAsFile();
+                    break;
+                }
+            }
+        }
+
+        // 2. 如果没有二进制图片，尝试提取纯文本路径或 URL
+        let originalPath = '';
+        if (!imageFile) {
+            const uriList = clipboardData.getData('text/uri-list');
+            if (uriList) {
+                const urls = uriList.split('\n').map(u => u.trim()).filter(u => u && !u.startsWith('#'));
+                if (urls.length > 0) {
+                    const url = urls[0];
+                    if (/\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(url) || url.startsWith('file://')) {
+                        originalPath = url;
+                    }
+                }
+            }
+            if (!originalPath) {
+                const text = clipboardData.getData('text/plain');
+                if (text && /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(text.trim())) {
+                    originalPath = text.trim();
+                }
+            }
+        }
+
+        // 3. 如果有图片或路径，进行拦截并处理
+        if (imageFile || originalPath) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation(); // 强行阻断 Monaco 的粘贴流
+
+            if (originalPath) {
+                insertTextAtCursor(editor, `![图片](${originalPath})`);
+                return;
+            }
+
+            await handleImageFile(editor, imageFile);
+        }
+    }, true);
+}
+
+// 初始化监听
+setupImagePaster(editor);
 
 // =========================================================
 // Monaco 滚轮平滑滚动
@@ -744,16 +884,6 @@ function enhanceMermaidBlocks(container) {
     });
 }
 
-/**
- * 对 outputEl 内所有 <pre><code class="language-*"> 做 Shiki 高亮。
- *
- * 策略：
- *   - 内置语言：高亮器已就绪，直接替换 <pre> 内部 HTML，零闪烁。
- *   - 额外语言：await 读取 grammar，加载成功后替换；
- *     失败则保留原纯文本 DOM，不抛错。
- *   - 并发加载多个额外语言，`Promise.all` 收齐后一次性替换，
- *     期间不阻塞 updatePreview 主流程（调用方不 await）。
- */
 async function applyShikiHighlighting(root, seq) {
     if (!isShikiReady()) {
         initShiki()
@@ -793,8 +923,6 @@ async function applyShikiHighlighting(root, seq) {
         const newPre = temp.querySelector('pre');
         if (!newPre) continue;
 
-        // 迁移原 <pre> 上的所有属性（data-source-line 等），
-        // 保留 enhanceCodeBlocks 建立的 wrapper 和复制按钮。
         for (const attr of pre.attributes) {
             if (!newPre.hasAttribute(attr.name)) {
                 newPre.setAttribute(attr.name, attr.value);
@@ -841,8 +969,6 @@ const updatePreview = async (markdown) => {
 
     enhanceCodeBlocks(outputEl);
 
-    // Shiki 高亮：调用方不 await，避免阻塞后续 mermaid 渲染。
-    // 高亮完成后由 MutationObserver 自动触发 scrollSync.rebuildAnchors。
     applyShikiHighlighting(outputEl, seq).catch(err => {
         console.warn('[shiki] 高亮流程异常:', err);
     });
@@ -1099,13 +1225,6 @@ async function openSettingsWindow() {
 }
 
 // --- 主题应用 / 持久化 ---
-/**
- * 将原始主题同步给原生窗口。
- * system -> null，让窗口恢复跟随系统；
- * 否则 Tauri 的 setTheme('light'/'dark') 会强制覆盖 WebView 的
- * prefers-color-scheme，导致“系统深色 + 用户选浅色”后再选“跟随系统”
- * 读到的仍是浅色（被污染的 false）。
- */
 function syncWindowTheme(theme) {
     if (!isTauri) return Promise.resolve();
     try {
@@ -1136,11 +1255,8 @@ async function applyTheme(theme, { persist = true } = {}) {
     const next = normalizeTheme(theme);
     currentTheme = next;
 
-    // 先把原始主题同步给原生窗口：system -> null
     await syncWindowTheme(next);
 
-    // setTheme(null) 后 WebView 的 prefers-color-scheme 需要一两帧才恢复，
-    // 否则这里读到的还是上一次 setTheme('light'/'dark') 污染后的值。
     if (next === 'system' && isTauri) {
         await new Promise(resolve =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -1189,7 +1305,6 @@ async function initTheme() {
     if (persisted !== currentTheme) {
         await applyTheme(persisted, { persist: false });
     } else {
-        // 传原始主题：system 时让窗口 setTheme(null) 跟随系统
         await syncWindowTheme(currentTheme);
     }
 }
@@ -1312,7 +1427,6 @@ if (isTauri) {
         }
     });
 
-    // 设置窗口改主题时，主窗口只应用（持久化由设置窗口负责）
     listen('settings:theme-changed', async (event) => {
         const theme = event.payload && event.payload.theme;
         if (theme) {
@@ -1335,7 +1449,6 @@ if (isTauri) {
     createTab("未命名 1.md", "# Markdown Looker\n开始写作吧！");
 }
 
-// 启动时从 config.json 同步主题（Tauri）或 localStorage（浏览器）
 initTheme();
 
 // --- 关闭窗口：拦截 + 逐个询问脏标签 ---
@@ -1350,9 +1463,8 @@ async function confirmCloseAllTabs() {
         const action = await showSaveConfirmDialog(tab.name);
         if (action === 'save') {
             const ok = await saveTab(tab.id, false);
-            if (!ok) return false; // 保存失败 / 系统保存框取消 => 中止关闭整个窗口
+            if (!ok) return false;
         }
-        // action === 'cancel' => 放弃保存，继续问下一个脏标签
     }
     return true;
 }

@@ -2001,6 +2001,7 @@ name = "markdown-looker"
 version = "1.1.0"
 dependencies = [
  "log",
+ "pathdiff",
  "serde",
  "serde_json",
  "tauri",
@@ -2448,6 +2449,12 @@ dependencies = [
  "smallvec",
  "windows-link",
 ]
+
+[[package]]
+name = "pathdiff"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
 name = "percent-encoding"

@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, FilePath};
+use std::process::Command;
 
 #[derive(Serialize)]
 struct FileData {
@@ -364,8 +365,92 @@ pub fn run() {
             detect_picnexus_path,
             validate_picnexus_path,
             pick_picnexus_path,
-            pick_folder
+            pick_folder,
+            save_or_upload_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+// ==================== 图片保存与上传 ====================
+
+#[tauri::command]
+async fn save_or_upload_image(
+    config: AppConfig,
+    md_path: Option<String>,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    if config.insert_image_mode == "cloud" {
+        // --- 云端上传逻辑 (PicNexus) ---
+        let picnexus_exe = config.picnexus_path.ok_or("未配置 PicNexus 路径")?;
+        
+        // 1. 保存到临时文件
+        let mut temp_path = std::env::temp_dir();
+        temp_path.push(&file_name);
+        fs::write(&temp_path, &bytes).map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+        // 2. 根据截图，PicNexus 的正确 CLI 语法为：picnexus --service <bed> <file>
+        let mut cmd = Command::new(&picnexus_exe);
+        if !config.picnexus_bed.trim().is_empty() {
+            cmd.arg("--service").arg(config.picnexus_bed.trim());
+        }
+        cmd.arg(temp_path.to_str().unwrap());
+
+        let output = cmd.output().map_err(|e| format!("运行 PicNexus 失败: {}", e))?;
+
+        let _ = fs::remove_file(&temp_path); // 清理临时文件
+
+        if output.status.success() {
+            // 获取标准输出的链接，并清理可能的换行符或多余内容
+            let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if url.is_empty() {
+                return Err("PicNexus 返回了空链接".into());
+            }
+            return Ok(url);
+        } else {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("上传失败: {}", err));
+        }
+    } else {
+        // --- 本地保存逻辑 ---
+        let md_path_obj = match md_path {
+            Some(p) if !p.is_empty() => PathBuf::from(p),
+            _ => return Err("文件尚未保存，请先保存 Markdown 文件。".into()),
+        };
+        let md_dir = md_path_obj.parent().ok_or("无法获取当前文件所在目录")?;
+        let md_stem = md_path_obj.file_stem().unwrap_or_default().to_string_lossy();
+
+        let target_dir = match config.local_image_save_mode.as_str() {
+            "fixed" => {
+                if config.local_fixed_dir.is_empty() {
+                    return Err("未设置固定保存位置".into());
+                }
+                PathBuf::from(&config.local_fixed_dir)
+            }
+            "same_dir" => md_dir.to_path_buf(),
+            "sub_dir" => {
+                if config.local_sub_dir_mode == "shared" {
+                    md_dir.join(".image")
+                } else {
+                    md_dir.join(format!("{}.image", md_stem))
+                }
+            }
+            _ => md_dir.to_path_buf(),
+        };
+
+        fs::create_dir_all(&target_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+        let target_path = target_dir.join(&file_name);
+        fs::write(&target_path, bytes).map_err(|e| format!("保存图片失败: {}", e))?;
+
+        // 返回相对路径
+        let relative_path = if config.local_image_save_mode == "fixed" {
+            target_path.to_string_lossy().to_string()
+        } else {
+            let rel = pathdiff::diff_paths(&target_path, md_dir)
+                .unwrap_or_else(|| target_path.clone());
+            rel.to_string_lossy().replace("\\", "/")
+        };
+
+        Ok(relative_path)
+    }
 }
