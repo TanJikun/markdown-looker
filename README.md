@@ -1,6 +1,8 @@
 # Markdown Looker
 
-<img src="./icon.svg" alt="图标" width="200" height="200" style="display: block; margin: 0 auto;">
+<p align="center">
+  <img src="./icon.svg" alt="图标" width="256" height="256">
+</p>
 
 一个极简、优雅、且拥有**极致丝滑左右双向滚动同步**的本地 Markdown 桌面编辑器。
 
