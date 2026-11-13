@@ -4,9 +4,9 @@
 <head>
     <meta charset="utf-8">
     <title>设置</title>
-  <script type="module" crossorigin src="/assets/settings-BTdBlF34.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="stylesheet" crossorigin href="/assets/settings-mlX0vphZ.css">
+  <script type="module" crossorigin src="/assets/settings-A_lTKnvF.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-CS1eXPs2.js">
+  <link rel="stylesheet" crossorigin href="/assets/settings-XLIIBZ9S.css">
 </head>
 
 <body>
@@ -18,38 +18,10 @@
 
         <div class="settings-main">
             <aside class="settings-sidebar">
-                <nav class="settings-nav">
-                    <button type="button" class="settings-nav-item active" data-panel="appearance">外观</button>
-                </nav>
+                <nav class="settings-nav" id="settings-nav"></nav>
             </aside>
 
-            <main class="settings-content">
-                <section class="settings-panel" data-panel="appearance">
-                    <h2 class="settings-panel-title">外观</h2>
-
-                    <div class="settings-field">
-                        <div class="settings-field-label">主题</div>
-                        <div class="settings-field-control">
-                            <div class="theme-group">
-                                <button type="button" class="theme-btn" data-theme="system">跟随系统</button>
-                                <button type="button" class="theme-btn" data-theme="dark">深色</button>
-                                <button type="button" class="theme-btn" data-theme="light">浅色</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-field">
-                        <div class="settings-field-label">
-                            设置窗口大小
-                            <span class="settings-hint">相对主窗口，拖动即时生效</span>
-                        </div>
-                        <div class="settings-field-control">
-                            <input type="range" id="ratio-input" min="40" max="100" step="5" value="80">
-                            <span id="ratio-value" class="ratio-value">80%</span>
-                        </div>
-                    </div>
-                </section>
-            </main>
+            <main class="settings-content" id="settings-content"></main>
         </div>
     </div>
 

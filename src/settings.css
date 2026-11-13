@@ -239,3 +239,101 @@ body {
     color: var(--muted);
     font-size: 13px;
 }
+
+/* ---------- 文本输入 + 动作按钮 ---------- */
+.settings-text-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font: 13px/1.5 inherit;
+    padding: 6px 10px;
+    outline: none;
+    transition: border-color .15s;
+}
+
+.settings-text-input:focus {
+    border-color: var(--accent);
+}
+
+.settings-action-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font: 13px/1.5 inherit;
+    padding: 6px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+}
+
+.settings-action-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--accent);
+}
+
+.settings-field-status {
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 16px;
+}
+
+.settings-field-status[data-kind="ok"] {
+    color: #3fb950;
+}
+
+.settings-field-status[data-kind="warn"] {
+    color: #d29922;
+}
+
+.settings-field-status[data-kind="error"] {
+    color: #f85149;
+}
+
+/* 强制移除过渡和动画 */
+.no-anim * {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* 控制显示隐藏 */
+.settings-field[hidden],
+.settings-sub-field[hidden] {
+    display: none !important;
+}
+
+/* 缩进的子配置项 */
+.settings-sub-field {
+    margin-left: 24px;
+    padding-left: 16px;
+    border-left: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+/* 单选按钮组布局 */
+.settings-radio-group {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.settings-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.settings-radio-label input[type="radio"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}

@@ -3,7 +3,7 @@ mod grammar;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
@@ -23,21 +23,47 @@ pub struct AppConfig {
     pub theme: String,
     #[serde(default = "default_settings_window_ratio")]
     pub settings_window_ratio: f64,
+
+    // === 插入图片行为 ===
+    #[serde(default = "default_insert_mode")]
+    pub insert_image_mode: String, // "local" | "cloud"
+
+    // 本地配置
+    #[serde(default = "default_local_save_mode")]
+    pub local_image_save_mode: String, // "fixed" | "same_dir" | "sub_dir"
+    #[serde(default)]
+    pub local_fixed_dir: String,       // 当 save_mode == "fixed" 时使用
+    #[serde(default = "default_local_sub_dir_mode")]
+    pub local_sub_dir_mode: String,    // "shared"(.image) | "independent"(同名文件夹)
+
+    // 云端配置
+    #[serde(default = "default_cloud_provider")]
+    pub cloud_provider: String,        // 目前仅 "picnexus"
+    #[serde(default)]
+    pub picnexus_path: Option<String>, // PicNexus 位置
+    #[serde(default)]
+    pub picnexus_bed: String,          // PicNexus 支持的图床（命令行参数）
 }
 
-fn default_theme() -> String {
-    "system".to_string()
-}
-
-fn default_settings_window_ratio() -> f64 {
-    0.8
-}
+fn default_theme() -> String { "system".to_string() }
+fn default_settings_window_ratio() -> f64 { 0.8 }
+fn default_insert_mode() -> String { "local".to_string() }
+fn default_local_save_mode() -> String { "same_dir".to_string() }
+fn default_local_sub_dir_mode() -> String { "shared".to_string() }
+fn default_cloud_provider() -> String { "picnexus".to_string() }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             theme: default_theme(),
             settings_window_ratio: default_settings_window_ratio(),
+            insert_image_mode: default_insert_mode(),
+            local_image_save_mode: default_local_save_mode(),
+            local_fixed_dir: "".to_string(),
+            local_sub_dir_mode: default_local_sub_dir_mode(),
+            cloud_provider: default_cloud_provider(),
+            picnexus_path: None,
+            picnexus_bed: "".to_string(),
         }
     }
 }
@@ -64,6 +90,92 @@ fn save_config(config: AppConfig) -> Result<(), String> {
     let content =
         serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
     fs::write(&path, content).map_err(|e| format!("写入配置失败: {}", e))
+}
+
+// ==================== PicNexus 路径与通用文件夹检测 ====================
+
+/// 把用户输入或环境变量里的值，解析成真实的 PicNexus.exe 路径。
+/// 规则：
+/// - 如果是文件：检查扩展名是不是 .exe，是则直接返回。
+/// - 如果是文件夹：**只看根目录**，寻找 PicNexus.exe，不递归子文件夹。
+fn resolve_picnexus_path(raw: &str) -> Option<String> {
+    let p = Path::new(raw.trim());
+    if !p.exists() {
+        return None;
+    }
+
+    if p.is_file() {
+        let is_exe = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("exe"))
+            .unwrap_or(false);
+        return if is_exe {
+            Some(p.to_string_lossy().to_string())
+        } else {
+            None
+        };
+    }
+
+    if p.is_dir() {
+        // 只读根目录一层，不递归
+        if let Ok(entries) = fs::read_dir(p) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.eq_ignore_ascii_case("picnexus.exe") {
+                        return Some(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// 遍历 PATH 的每一项，寻找 PicNexus.exe，找到第一个即返回。
+#[tauri::command]
+fn detect_picnexus_path() -> Option<String> {
+    let path_var = env::var("PATH").ok()?;
+    let separator = if cfg!(windows) { ';' } else { ':' };
+
+    for dir in path_var.split(separator) {
+        if dir.trim().is_empty() {
+            continue;
+        }
+        if let Some(found) = resolve_picnexus_path(dir) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// 校验用户手动输入/选择的路径是否有效。
+#[tauri::command]
+fn validate_picnexus_path(path: String) -> Option<String> {
+    resolve_picnexus_path(&path)
+}
+
+/// 弹出文件夹选择框，让用户选择 PicNexus 所在目录，并校验。
+#[tauri::command]
+fn pick_picnexus_path(app: tauri::AppHandle) -> Option<String> {
+    let folder = app.dialog().file().blocking_pick_folder();
+    if let Some(fp) = folder {
+        let path_str = file_path_to_string(fp);
+        return resolve_picnexus_path(&path_str);
+    }
+    None
+}
+
+/// 通用文件夹选择框（用于“本地固定位置”）
+#[tauri::command]
+fn pick_folder(app: tauri::AppHandle) -> Option<String> {
+    let folder = app.dialog().file().blocking_pick_folder();
+    folder.map(file_path_to_string)
 }
 
 // ==================== 日志（logs/ 目录，与 exe 同目录） ====================
@@ -109,7 +221,6 @@ fn cleanup_old_logs(dir: &PathBuf) {
         return;
     }
 
-    // 文件名含时间戳，字典序即时间序
     let mut sorted = entries;
     sorted.sort();
     let to_remove = sorted.len() - MAX_LOGS;
@@ -168,7 +279,6 @@ fn save_file(path: String, content: String) -> Result<(), String> {
 }
 
 /// 把 dialog 插件返回的 FilePath 转成路径字符串。
-/// FilePath 是枚举：Path(PathBuf) 或 Url(Url)。
 fn file_path_to_string(file_path: FilePath) -> String {
     match file_path {
         FilePath::Path(p) => p.to_string_lossy().to_string(),
@@ -178,7 +288,6 @@ fn file_path_to_string(file_path: FilePath) -> String {
 
 #[tauri::command]
 async fn open_dialog(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    // 链式调用：add_filter 消费 self 并返回 Self
     let file_path = app
         .dialog()
         .file()
@@ -193,7 +302,6 @@ async fn save_dialog(
     app: tauri::AppHandle,
     default_name: Option<String>,
 ) -> Result<Option<String>, String> {
-    // add_filter 返回 Self，重新绑定后再继续调用 set_file_name
     let mut dialog = app
         .dialog()
         .file()
@@ -252,7 +360,11 @@ pub fn run() {
             load_config,
             save_config,
             append_log,
-            grammar::read_lang_grammar
+            grammar::read_lang_grammar,
+            detect_picnexus_path,
+            validate_picnexus_path,
+            pick_picnexus_path,
+            pick_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
