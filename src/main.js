@@ -23,6 +23,86 @@ import 'katex/dist/katex.min.css';
 
 import { initToolbar } from './toolbar.js';
 
+// =========================================================
+// 本地图片路径处理
+// =========================================================
+function resolvePath(basePath, relativePath) {
+    // 如果是绝对路径 (Windows 盘符 或 Unix / 开头)，直接返回
+    if (/^([a-zA-Z]:[\\/]|\/)/.test(relativePath)) {
+        return relativePath;
+    }
+
+    // 统一分隔符为 /
+    let base = basePath.replace(/\\/g, '/');
+    let rel = relativePath.replace(/\\/g, '/');
+
+    // 获取当前文件所在的目录
+    const lastSlashIndex = base.lastIndexOf('/');
+    let dir = lastSlashIndex !== -1 ? base.substring(0, lastSlashIndex) : '';
+
+    if (dir.endsWith(':')) {
+        dir += '/';
+    }
+
+    let fullPath = dir + '/' + rel;
+
+    // 使用栈解析 . 和 ..
+    const parts = fullPath.split('/');
+    const resolved = [];
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (part === '' || part === '.') {
+            if (i === 0 && part === '') resolved.push('');
+            continue;
+        }
+        if (part === '..') {
+            if (resolved.length > 1 || (resolved.length === 1 && resolved[0] !== '')) {
+                // 如果已经到达盘符根目录，不要 pop
+                if (resolved[resolved.length - 1].endsWith(':')) {
+                    continue;
+                }
+                resolved.pop();
+            }
+        } else {
+            resolved.push(part);
+        }
+    }
+
+    return resolved.join('/');
+}
+
+function fixImageSources(container, currentFilePath) {
+    if (!window.__TAURI__) return;
+    const convertFileSrc = window.__TAURI__.core.convertFileSrc;
+
+    container.querySelectorAll('img').forEach(img => {
+        let src = img.getAttribute('src');
+        if (!src) return;
+
+        // 跳过网络链接、data: 和已经转换过的链接
+        if (/^(https?:|data:|blob:|asset:)/.test(src)) return;
+
+        let absolutePath = '';
+        const isAbsolute = /^([a-zA-Z]:[\\/]|\/)/.test(src);
+
+        if (isAbsolute) {
+            absolutePath = src;
+        } else if (currentFilePath) {
+            absolutePath = resolvePath(currentFilePath, src);
+        } else {
+            // 如果是未命名的文件，没有路径，无法解析相对路径
+            return;
+        }
+
+        try {
+            // 将本地绝对路径转换为 Tauri 可访问的 URL
+            img.src = convertFileSrc(absolutePath);
+        } catch (e) {
+            console.error('图片路径转换失败:', e, absolutePath);
+        }
+    });
+}
+
 self.MonacoEnvironment = {
     getWorker() { return new editorWorker(); }
 };
@@ -742,7 +822,8 @@ const updatePreview = async (markdown) => {
     outputEl.innerHTML = html;
 
     annotateSourceLines(outputEl, markdown);
-
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    fixImageSources(outputEl, activeTab ? activeTab.path : null);
     const mermaidBlocks = outputEl.querySelectorAll('code.language-mermaid');
     const mermaidJobs = [];
     mermaidBlocks.forEach((block, i) => {

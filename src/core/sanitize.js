@@ -18,7 +18,7 @@ export const PREVIEW_SANITIZE_CONFIG = {
     // author markdown would bypass the URL validation in video-embed.js. Video embeds
     // are created exclusively via the DOM-based helpers which validate against
     // VIDEO_EXT_RE / YOUTUBE_RE / VIMEO_RE / GITHUB_ASSET_RE.
-    ADD_ATTR: ['target', 'class', 'id', 'aria-label', 'aria-hidden', 'controls', 'preload', 'playsinline', 'controlslist', 'rel', 'tabindex'],
+    ADD_ATTR: ['target', 'class', 'id', 'aria-label', 'aria-hidden', 'controls', 'preload', 'playsinline', 'controlslist', 'rel', 'tabindex', 'align'],
     FORBID_TAGS: ['iframe', 'script', 'object', 'embed', 'form', 'video', 'source', 'audio'],
     FORBID_ATTR: ['srcdoc'],
     ALLOW_DATA_ATTR: false
@@ -30,39 +30,6 @@ const SAFE_COLOR_DECLARATION = /^(color|background(?:-color)?)\s*:\s*(#[0-9a-f]{
 // 其它 var() / url() / expression() 一律拒绝。
 const SHIKI_STYLE_TOKEN = /^(?:--shiki-[\w-]+|color|background(?:-color)?)\s*:\s*(?:#[0-9a-f]{3,8}|rgba?\([^)]*\)|var\(--shiki-[\w-]+\))$/i;
 
-// KaTeX layout relies on inline styles (height/vertical-align/top/…). Stripping
-// them collapses equations in preview. Keep a tight property+value allowlist.
-const SAFE_LAYOUT_PROPS = new Set([
-    'height',
-    'width',
-    'min-width',
-    'min-height',
-    'max-width',
-    'max-height',
-    'top',
-    'left',
-    'right',
-    'bottom',
-    'margin',
-    'margin-top',
-    'margin-right',
-    'margin-bottom',
-    'margin-left',
-    'padding',
-    'padding-top',
-    'padding-right',
-    'padding-bottom',
-    'padding-left',
-    'vertical-align',
-    'border-top-width',
-    'border-right-width',
-    'border-bottom-width',
-    'border-left-width',
-    'position'
-]);
-
-const SAFE_LENGTH_VALUE = /^-?\d+(\.\d+)?(em|ex|px|rem|%|pt)?$/i;
-const SAFE_POSITION_VALUE = /^relative$/i;
 const UNSAFE_STYLE_TOKEN = /url\s*\(|expression\s*\(|attr\s*\(|javascript:|@import|behavior/i;
 
 /**
@@ -79,28 +46,42 @@ export function sanitizeColorStyle(value) {
         .map((declaration) => {
             if (!declaration) return '';
 
-            // —— Shiki 高亮变量 / CSS 变量引用放行 ——
+            // 1. 优先放行 Shiki 高亮变量 / CSS 变量引用
             if (SHIKI_STYLE_TOKEN.test(declaration)) {
                 return declaration.replace(/\s+/g, '');
             }
 
+            // 2. 放行基础颜色声明
             if (SAFE_COLOR_DECLARATION.test(declaration)) {
                 return declaration.replace(/\s+/g, '');
             }
 
+            // 3. 解析属性名和属性值
             const match = /^([a-z-]+)\s*:\s*(.+)$/i.exec(declaration);
             if (!match) return '';
 
             const prop = match[1].toLowerCase();
             const rawValue = match[2].trim();
-            if (!SAFE_LAYOUT_PROPS.has(prop) || UNSAFE_STYLE_TOKEN.test(rawValue)) {
+
+            // 3.1 拦截极其危险的属性
+            if (['behavior', '-moz-binding'].includes(prop)) {
                 return '';
             }
-            if (prop === 'position') {
-                return SAFE_POSITION_VALUE.test(rawValue) ? 'position:relative' : '';
+
+            // 3.2 拦截危险的值特征（URL加载、JS表达式、@import等）
+            if (UNSAFE_STYLE_TOKEN.test(rawValue)) {
+                return '';
             }
-            if (!SAFE_LENGTH_VALUE.test(rawValue)) return '';
-            return `${prop}:${rawValue}`;
+
+            // 3.3 防遮挡限制：允许 absolute 定位，但禁用 fixed（防全屏恶意覆盖点击劫持）
+            if (prop === 'position' && rawValue === 'fixed') {
+                return '';
+            }
+
+            // =======================================================
+            // 4. 只要没有触发以上危险特征，说明是安全的渲染样式，全部放行！
+            // =======================================================
+            return declaration.replace(/\s+/g, ' ').trim();
         })
         .filter(Boolean)
         .join(';');
