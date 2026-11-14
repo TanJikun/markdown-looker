@@ -701,7 +701,23 @@ export function initToolbar(editor, options = {}) {
             case 'hr': insertHr(editor); break;
         }
         afterEdit();
+        // ★ BUGFIX: 兜底把焦点还给 Monaco 编辑器。
+        // 否则工具栏按钮插入文本后，Ctrl+Z 的键盘事件到不了编辑器，
+        // 撤销栈里明明有记录却按不出来。
+        editor.focus();
     };
+
+    // ★ BUGFIX: 在捕获阶段拦截工具栏按钮的 mousedown，并 preventDefault()。
+    // 浏览器默认行为是 mousedown 时把焦点从 Monaco 的隐藏 textarea
+    // 转移到被点击的 <button> 上。一旦焦点离开编辑器，
+    // 后续 Ctrl+Z 就进不了 Monaco 撤销栈——这是无法撤销的真正原因。
+    // preventDefault() 只阻止「聚焦 + 拖拽选择」，不影响后续 click 事件，
+    // 所以 dispatch 照常执行。
+    container.addEventListener('mousedown', (e) => {
+        const btn = e.target.closest('.md-toolbar-btn');
+        if (!btn || btn.disabled) return;
+        e.preventDefault();
+    }, true);
 
     container.addEventListener('click', (e) => {
         const btn = e.target.closest('.md-toolbar-btn');
