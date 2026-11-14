@@ -94,7 +94,12 @@ function wrapSelection(editor, left, right) {
         endLine = start.lineNumber + lines.length - 1;
         endCol = lines[lines.length - 1].length + 1;
     }
-    editor.setPosition({ lineNumber: endLine, column: endCol });
+
+    // ★ 选中整段（例如 `*苹果*` 整串），而不是只把光标停在末尾。
+    editor.setSelection(new monaco.Selection(
+        start.lineNumber, start.column,
+        endLine, endCol
+    ));
     editor.pushUndoStop();
 }
 
