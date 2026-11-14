@@ -337,3 +337,139 @@ body {
     accent-color: var(--accent);
     cursor: pointer;
 }
+
+/* =========================================================
+   快捷键面板
+   ========================================================= */
+.settings-shortcuts-hint {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+    margin-bottom: 12px;
+}
+
+.settings-shortcuts-hint code {
+    background: var(--hover-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+}
+
+.settings-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 13px;
+}
+
+.settings-table .settings-table-group {
+    background: var(--hover-bg);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    text-align: left;
+    border: 1px solid var(--border);
+}
+
+.settings-table td {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.settings-table .col-desc {
+    width: 28%;
+}
+
+.settings-table .col-key {
+    width: 32%;
+}
+
+.settings-table .col-ops {
+    width: 40%;
+}
+
+.settings-table .col-ops .settings-action-btn {
+    padding: 3px 12px;
+    font-size: 12px;
+    margin-right: 4px;
+}
+
+.settings-table .col-ops .settings-action-btn:last-child {
+    margin-right: 0;
+}
+
+.shortcut-key {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    background: var(--hover-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-width: 20px;
+    text-align: center;
+    color: var(--text);
+}
+
+.shortcut-empty {
+    color: var(--muted);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* 捕获浮层 */
+.shortcut-capture-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+}
+
+.shortcut-capture-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+    padding: 24px;
+    min-width: 340px;
+    max-width: 90vw;
+    text-align: center;
+}
+
+.shortcut-capture-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.shortcut-capture-preview {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 16px;
+    color: var(--accent);
+    padding: 12px 16px;
+    background: var(--hover-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    min-height: 24px;
+    user-select: none;
+}
+
+.shortcut-capture-hint {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.shortcut-capture-error {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #f85149;
+}

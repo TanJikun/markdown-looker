@@ -638,7 +638,7 @@ function buildButton(spec) {
 
 export function initToolbar(editor, options = {}) {
     const container = document.getElementById('md-toolbar');
-    if (!container) return;
+    if (!container) return null;
 
     const { refreshPreview } = options;
 
@@ -676,8 +676,23 @@ export function initToolbar(editor, options = {}) {
         refreshInline();
     };
 
-    const dispatch = (btn) => {
-        const action = btn.dataset.action;
+    const getButton = (action) =>
+        container.querySelector(`.md-toolbar-btn[data-action="${action}"]`);
+
+    const isActionAvailable = (action) => {
+        if (!INLINE_ACTIONS.has(action)) return true;
+        const sel = editor.getSelection();
+        return !!sel && !sel.isEmpty();
+    };
+
+    // ★ 核心：把所有动作统一收口到一个函数，按钮 click 与快捷键都走这里。
+    const dispatchAction = (action) => {
+        if (!isActionAvailable(action)) return;
+
+        const btn = getButton(action);
+        // table / alert 的下拉面板需要锚点；快捷键触发时锚到工具栏按钮下方
+        const anchor = btn || editor.getDomNode() || document.body;
+
         switch (action) {
             case 'bold': wrapSelection(editor, '**', '**'); break;
             case 'italic': wrapSelection(editor, '*', '*'); break;
@@ -698,26 +713,17 @@ export function initToolbar(editor, options = {}) {
 
             case 'link': insertLink(editor); break;
             case 'image': insertImage(editor); break;
-            case 'table': openTablePanel(btn, editor, afterEdit); return;
+            case 'table': openTablePanel(anchor, editor, afterEdit); return;
             case 'codeBlock': insertCodeBlock(editor); break;
 
             case 'quote': applyQuote(editor); break;
-            case 'alert': openAlertPanel(btn, editor, afterEdit); return;
+            case 'alert': openAlertPanel(anchor, editor, afterEdit); return;
             case 'hr': insertHr(editor); break;
         }
         afterEdit();
-        // ★ BUGFIX: 兜底把焦点还给 Monaco 编辑器。
-        // 否则工具栏按钮插入文本后，Ctrl+Z 的键盘事件到不了编辑器，
-        // 撤销栈里明明有记录却按不出来。
         editor.focus();
     };
 
-    // ★ BUGFIX: 在捕获阶段拦截工具栏按钮的 mousedown，并 preventDefault()。
-    // 浏览器默认行为是 mousedown 时把焦点从 Monaco 的隐藏 textarea
-    // 转移到被点击的 <button> 上。一旦焦点离开编辑器，
-    // 后续 Ctrl+Z 就进不了 Monaco 撤销栈——这是无法撤销的真正原因。
-    // preventDefault() 只阻止「聚焦 + 拖拽选择」，不影响后续 click 事件，
-    // 所以 dispatch 照常执行。
     container.addEventListener('mousedown', (e) => {
         const btn = e.target.closest('.md-toolbar-btn');
         if (!btn || btn.disabled) return;
@@ -728,11 +734,17 @@ export function initToolbar(editor, options = {}) {
         const btn = e.target.closest('.md-toolbar-btn');
         if (!btn || btn.disabled) return;
         e.preventDefault();
-        dispatch(btn);
+        dispatchAction(btn.dataset.action);
     });
 
     editor.onDidChangeCursorSelection(refreshInline);
     editor.onDidChangeModelContent(refreshInline);
 
     refreshInline();
+
+    return {
+        dispatchAction,
+        getButtonElement: getButton,
+        isActionAvailable,
+    };
 }
