@@ -20,6 +20,7 @@ const getCurrentWindow = tauri?.window?.getCurrentWindow;
 const PANELS = [
     { id: 'appearance', title: '外观', load: () => import('./settings/appearance.js') },
     { id: 'imagehost', title: '图床', load: () => import('./settings/imagehost.js') },
+    { id: 'shortcuts', title: '快捷键', load: () => import('./settings/shortcuts.js') },
 ];
 
 // ---------- 配置 ----------

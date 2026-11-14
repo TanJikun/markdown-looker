@@ -1,5 +1,6 @@
 mod grammar;
 
+use std::collections::HashMap;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -44,6 +45,10 @@ pub struct AppConfig {
     pub picnexus_path: Option<String>, // PicNexus 位置
     #[serde(default)]
     pub picnexus_bed: String,          // PicNexus 支持的图床（命令行参数）
+
+    // 快捷键映射：动作 id → 规范化的 code 串（空串表示未绑定）
+    #[serde(default)]
+    pub shortcuts: HashMap<String, String>,
 }
 
 fn default_theme() -> String { "system".to_string() }
@@ -65,6 +70,7 @@ impl Default for AppConfig {
             cloud_provider: default_cloud_provider(),
             picnexus_path: None,
             picnexus_bed: "".to_string(),
+            shortcuts: HashMap::new(),
         }
     }
 }
@@ -172,7 +178,7 @@ fn pick_picnexus_path(app: tauri::AppHandle) -> Option<String> {
     None
 }
 
-/// 通用文件夹选择框（用于“本地固定位置”）
+/// 通用文件夹选择框（用于"本地固定位置"）
 #[tauri::command]
 fn pick_folder(app: tauri::AppHandle) -> Option<String> {
     let folder = app.dialog().file().blocking_pick_folder();

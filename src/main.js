@@ -23,6 +23,14 @@ import 'katex/dist/katex.min.css';
 
 import { initToolbar } from './toolbar.js';
 
+import {
+    DEFAULT_SHORTCUTS,
+    formatShortcut,
+    isModifierCode,
+    parseShortcutString,
+    matchShortcut,
+} from './core/shortcuts.js';
+
 // =========================================================
 // 本地图片路径处理
 // =========================================================
@@ -371,7 +379,7 @@ const fallbackInput = document.getElementById('fallbackInput');
 scrollSync.initialize(editor, previewWrap, { contentRoot: outputEl });
 scrollSync.enable();
 
-initToolbar(editor, {
+const toolbarCtl = initToolbar(editor, {
     refreshPreview: () => updatePreview(editor.getValue()),
 });
 
@@ -1403,18 +1411,95 @@ document.getElementById('menu-save').onclick = () => handleSave(false);
 document.getElementById('menu-save-as').onclick = () => handleSave(true);
 document.getElementById('menu-settings').onclick = () => openSettingsWindow();
 
-window.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey) {
-        const key = e.key.toLowerCase();
-        if (key === 'o') {
-            e.preventDefault();
-            handleOpen();
-        } else if (key === 's') {
-            e.preventDefault();
-            handleSave(e.shiftKey);
+// =========================================================
+// 快捷键子系统
+// =========================================================
+
+let shortcutsMap = { ...DEFAULT_SHORTCUTS };
+let parsedShortcuts = []; // [{ id, parsed }]
+const pressedMods = new Set();
+
+function rebuildParsedShortcuts() {
+    parsedShortcuts = [];
+    for (const [id, str] of Object.entries(shortcutsMap)) {
+        if (!str) continue;
+        const p = parseShortcutString(str);
+        if (p) parsedShortcuts.push({ id, parsed: p });
+    }
+}
+
+function findMatchingAction(mods, code) {
+    for (const { id, parsed } of parsedShortcuts) {
+        if (matchShortcut(parsed, mods, code)) return id;
+    }
+    return null;
+}
+
+function updateMenuShortcutLabels() {
+    document.querySelectorAll('[data-shortcut-for]').forEach(el => {
+        const id = el.dataset.shortcutFor;
+        const val = shortcutsMap[id] || '';
+        el.textContent = val ? formatShortcut(val) : '';
+    });
+}
+
+async function loadShortcuts() {
+    if (isTauri) {
+        try {
+            const cfg = await invoke('load_config');
+            if (cfg && cfg.shortcuts && typeof cfg.shortcuts === 'object') {
+                shortcutsMap = { ...DEFAULT_SHORTCUTS, ...cfg.shortcuts };
+            }
+        } catch (e) {
+            console.error('加载快捷键配置失败:', e);
         }
     }
-});
+    rebuildParsedShortcuts();
+    updateMenuShortcutLabels();
+}
+
+function executeShortcutAction(actionId) {
+    switch (actionId) {
+        case 'open': handleOpen(); return;
+        case 'save': handleSave(false); return;
+        case 'saveAs': handleSave(true); return;
+        case 'openSettings': openSettingsWindow(); return;
+        default:
+            if (toolbarCtl) toolbarCtl.dispatchAction(actionId);
+    }
+}
+
+function setupGlobalShortcuts() {
+    window.addEventListener('keydown', (e) => {
+        // 修饰键：只记录，不判定
+        if (isModifierCode(e.code)) {
+            pressedMods.add(e.code);
+            return;
+        }
+        // 长按主键不重复触发
+        if (e.repeat) return;
+
+        const actionId = findMatchingAction(pressedMods, e.code);
+        if (!actionId) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        // 工具栏动作在可用性不足时（如行内格式无选区）静默忽略，
+        // 但已经 preventDefault，不会把字符输入到编辑器里——与按钮 disabled 一致。
+        executeShortcutAction(actionId);
+    }, true);
+
+    window.addEventListener('keyup', (e) => {
+        if (isModifierCode(e.code)) pressedMods.delete(e.code);
+    }, true);
+
+    window.addEventListener('blur', () => pressedMods.clear());
+}
+
+rebuildParsedShortcuts();
+setupGlobalShortcuts();
+loadShortcuts();
 
 if (isTauri) {
     listen('new-file-opened', async (event) => {
@@ -1431,6 +1516,15 @@ if (isTauri) {
         const theme = event.payload && event.payload.theme;
         if (theme) {
             await applyTheme(theme, { persist: false });
+        }
+    });
+
+    listen('settings:shortcuts-changed', (event) => {
+        const next = event.payload && event.payload.shortcuts;
+        if (next && typeof next === 'object') {
+            shortcutsMap = { ...DEFAULT_SHORTCUTS, ...next };
+            rebuildParsedShortcuts();
+            updateMenuShortcutLabels();
         }
     });
 
