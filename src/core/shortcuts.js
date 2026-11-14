@@ -3,7 +3,11 @@
 //
 // - 使用 KeyboardEvent.code（区分左右修饰键、区分主键盘/小键盘）
 // - 修饰键顺序固定：Control → Shift → Alt → Meta
-// - 存储格式示例：'ControlLeft+ShiftLeft+KeyS'，空串表示未绑定
+// - 单段存储格式：'ControlLeft+ShiftLeft+KeyS'
+// - 多段序列用空格分隔：'ControlLeft+KeyK ControlLeft+KeyS'
+// - 空串表示未绑定
+//
+// 本文件只定义常量和纯函数，不 import 任何 shortcuts 模块。
 // =========================================================
 
 export const MOD_ORDER = ['Control', 'Shift', 'Alt', 'Meta'];
@@ -14,7 +18,7 @@ export const ACTIONS = [
     { id: 'open', label: '打开文件', group: '文件', default: 'ControlLeft+KeyO' },
     { id: 'save', label: '保存', group: '文件', default: 'ControlLeft+KeyS' },
     { id: 'saveAs', label: '另存为', group: '文件', default: 'ControlLeft+ShiftLeft+KeyS' },
-    { id: 'openSettings', label: '打开设置', group: '文件', default: 'ControlLeft+Comma' },
+    { id: 'openSettings', label: '打开设置', group: '文件', default: 'ControlLeft+AltLeft+Comma' },
 
     // 行内格式
     { id: 'bold', label: '加粗', group: '格式', default: '' },
@@ -52,7 +56,6 @@ export const DEFAULT_SHORTCUTS = Object.fromEntries(
     ACTIONS.map(a => [a.id, a.default])
 );
 
-// 不是工具栏动作的（走文件操作）
 export const FILE_ACTIONS = new Set(['open', 'save', 'saveAs', 'openSettings']);
 
 // ---------- 修饰键判断 ----------
@@ -75,9 +78,8 @@ function modCategory(code) {
 }
 
 /**
- * 由「当前按下的修饰键集合 + 主键 code」构造规范的快捷键字符串。
- * - 同一类别（如左右 Ctrl 同时按下）只保留第一个
- * - 按 Control → Shift → Alt → Meta 固定排序
+ * 由「当前按下的修饰键集合 + 主键 code」构造规范的单段快捷键字符串。
+ * 同一类别（如左右 Ctrl 同时按下）只保留第一个，按固定顺序排列。
  */
 export function buildShortcutString(pressedMods, code) {
     const seen = new Set();
@@ -95,7 +97,7 @@ export function buildShortcutString(pressedMods, code) {
 }
 
 /**
- * 解析快捷键字符串为 { mods: Set<code>, key: code }。
+ * 解析单段快捷键字符串为 { mods: Set<code>, key: code }。
  */
 export function parseShortcutString(str) {
     if (!str) return null;
@@ -118,6 +120,25 @@ export function matchShortcut(parsed, pressedMods, code) {
         if (!pressedMods.has(m)) return false;
     }
     return true;
+}
+
+/**
+ * 解析多段序列（空格分隔）。
+ * 'ControlLeft+KeyK ControlLeft+KeyS'
+ *   => [ { mods: Set(['ControlLeft']), key: 'KeyK' },
+ *        { mods: Set(['ControlLeft']), key: 'KeyS' } ]
+ */
+export function parseShortcutSequence(str) {
+    if (!str) return null;
+    const parts = str.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return null;
+    const result = [];
+    for (const p of parts) {
+        const parsed = parseShortcutString(p);
+        if (!parsed) return null;
+        result.push(parsed);
+    }
+    return result;
 }
 
 // ---------- 显示名 ----------
@@ -160,7 +181,21 @@ Object.assign(KEY_NAMES, {
     IntlBackslash: '\\', IntlRo: '\\', IntlYen: '¥',
 });
 
+/**
+ * 单段显示：'ControlLeft+KeyS' => '左Ctrl + S'
+ * 未识别的 code 原样输出，便于排查键盘布局问题。
+ */
 export function formatShortcut(str) {
     if (!str) return '';
     return str.split('+').map(c => KEY_NAMES[c] || c).join(' + ');
+}
+
+/**
+ * 多段显示：'ControlLeft+KeyK ControlLeft+KeyS'
+ *   => '左Ctrl + K，左Ctrl + S'
+ */
+export function formatShortcutSequence(str) {
+    if (!str) return '';
+    return str.trim().split(/\s+/).filter(Boolean)
+        .map(formatShortcut).join('，');
 }

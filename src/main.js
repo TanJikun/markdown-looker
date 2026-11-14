@@ -25,9 +25,9 @@ import { initToolbar } from './toolbar.js';
 
 import {
     DEFAULT_SHORTCUTS,
-    formatShortcut,
+    formatShortcutSequence,
     isModifierCode,
-    parseShortcutString,
+    parseShortcutSequence,
     matchShortcut,
 } from './core/shortcuts.js';
 
@@ -1412,34 +1412,46 @@ document.getElementById('menu-save-as').onclick = () => handleSave(true);
 document.getElementById('menu-settings').onclick = () => openSettingsWindow();
 
 // =========================================================
-// 快捷键子系统
+// 快捷键子系统（支持多段序列，空格分隔，1.5s 超时重置）
 // =========================================================
 
 let shortcutsMap = { ...DEFAULT_SHORTCUTS };
-let parsedShortcuts = []; // [{ id, parsed }]
+let parsedShortcuts = [];        // [{ id, segments: [{mods, key}, ...] }]
 const pressedMods = new Set();
+
+let pendingMatch = null;         // { candidateIds: Set<id>, index, timer }
 
 function rebuildParsedShortcuts() {
     parsedShortcuts = [];
     for (const [id, str] of Object.entries(shortcutsMap)) {
         if (!str) continue;
-        const p = parseShortcutString(str);
-        if (p) parsedShortcuts.push({ id, parsed: p });
+        const seq = parseShortcutSequence(str);
+        if (seq && seq.length) parsedShortcuts.push({ id, segments: seq });
     }
 }
 
-function findMatchingAction(mods, code) {
-    for (const { id, parsed } of parsedShortcuts) {
-        if (matchShortcut(parsed, mods, code)) return id;
+function resetPendingMatch() {
+    if (pendingMatch?.timer) clearTimeout(pendingMatch.timer);
+    pendingMatch = null;
+}
+
+function findCandidatesAt(index, segment) {
+    const result = [];
+    for (const { id, segments } of parsedShortcuts) {
+        if (pendingMatch && !pendingMatch.candidateIds.has(id)) continue;
+        if (index >= segments.length) continue;
+        if (matchShortcut(segments[index], segment.mods, segment.key)) {
+            result.push({ id, total: segments.length });
+        }
     }
-    return null;
+    return result;
 }
 
 function updateMenuShortcutLabels() {
     document.querySelectorAll('[data-shortcut-for]').forEach(el => {
         const id = el.dataset.shortcutFor;
         const val = shortcutsMap[id] || '';
-        el.textContent = val ? formatShortcut(val) : '';
+        el.textContent = val ? formatShortcutSequence(val) : '';
     });
 }
 
@@ -1471,30 +1483,73 @@ function executeShortcutAction(actionId) {
 
 function setupGlobalShortcuts() {
     window.addEventListener('keydown', (e) => {
-        // 修饰键：只记录，不判定
         if (isModifierCode(e.code)) {
             pressedMods.add(e.code);
             return;
         }
-        // 长按主键不重复触发
         if (e.repeat) return;
 
-        const actionId = findMatchingAction(pressedMods, e.code);
-        if (!actionId) return;
+        const segment = { mods: new Set(pressedMods), key: e.code };
 
+        // 1. 尝试延续 pendingMatch
+        if (pendingMatch) {
+            const nextIdx = pendingMatch.index + 1;
+            const candidates = findCandidatesAt(nextIdx, segment);
+
+            if (candidates.length > 0) {
+                const complete = candidates.filter(c => c.total === nextIdx + 1);
+                if (complete.length > 0) {
+                    const id = complete[0].id;
+                    resetPendingMatch();
+                    e.preventDefault();
+                    e.stopPropagation();
+                    executeShortcutAction(id);
+                    return;
+                }
+                // 继续等待下一段
+                const ids = new Set(candidates.map(c => c.id));
+                resetPendingMatch();
+                pendingMatch = { candidateIds: ids, index: nextIdx };
+                pendingMatch.timer = setTimeout(resetPendingMatch, 1500);
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            // 延续失败，重置后尝试从头匹配
+            resetPendingMatch();
+        }
+
+        // 2. 从头匹配
+        const candidates = findCandidatesAt(0, segment);
+        if (candidates.length === 0) return;
+
+        const complete = candidates.filter(c => c.total === 1);
+        if (complete.length > 0) {
+            const id = complete[0].id;
+            e.preventDefault();
+            e.stopPropagation();
+            executeShortcutAction(id);
+            return;
+        }
+
+        // 3. 部分匹配，等待下一段
+        pendingMatch = {
+            candidateIds: new Set(candidates.map(c => c.id)),
+            index: 0,
+        };
+        pendingMatch.timer = setTimeout(resetPendingMatch, 1500);
         e.preventDefault();
         e.stopPropagation();
-
-        // 工具栏动作在可用性不足时（如行内格式无选区）静默忽略，
-        // 但已经 preventDefault，不会把字符输入到编辑器里——与按钮 disabled 一致。
-        executeShortcutAction(actionId);
     }, true);
 
     window.addEventListener('keyup', (e) => {
         if (isModifierCode(e.code)) pressedMods.delete(e.code);
     }, true);
 
-    window.addEventListener('blur', () => pressedMods.clear());
+    window.addEventListener('blur', () => {
+        pressedMods.clear();
+        resetPendingMatch();
+    });
 }
 
 rebuildParsedShortcuts();
@@ -1525,6 +1580,7 @@ if (isTauri) {
             shortcutsMap = { ...DEFAULT_SHORTCUTS, ...next };
             rebuildParsedShortcuts();
             updateMenuShortcutLabels();
+            resetPendingMatch();
         }
     });
 
