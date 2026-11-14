@@ -1,15 +1,20 @@
 // =========================================================
 // 快捷键面板
 // - 表格三列：描述 / 快捷键 / 操作（编辑·重置·解绑）
-// - 编辑：打开全屏捕获浮层，捕获主键后即确定；Esc 取消
+// - 编辑：全屏捕获浮层
+//     · 修饰键 + 主键 → 追加一段（不关闭浮层）
+//     · 可连续追加多段
+//     · 回车（主/小键盘）→ 确认并关闭
+//     · 退格 → 删除最后一段
+//     · Esc → 取消
 // - 冲突：拒绝并提示，不覆盖
-// - 保存即写回后端，同时广播给主窗口
 // =========================================================
 
 import {
     ACTIONS,
     DEFAULT_SHORTCUTS,
     formatShortcut,
+    formatShortcutSequence,
     isModifierCode,
     buildShortcutString,
 } from '../core/shortcuts.js';
@@ -18,7 +23,7 @@ export const meta = { id: 'shortcuts', title: '快捷键' };
 
 let ctx;
 let shortcuts = {};
-let captureState = null; // { actionId, overlay, previewEl, pressedMods }
+let captureState = null;
 
 export async function mount(root, context) {
     ctx = context;
@@ -28,8 +33,11 @@ export async function mount(root, context) {
     root.innerHTML = `
         <h2 class="settings-panel-title">快捷键</h2>
         <div class="settings-shortcuts-hint">
-            点击「编辑」后按下组合键即可绑定。组合键区分左右修饰键，也区分主键盘与小键盘。
-            单键绑定（如 <code>A</code>）会拦截编辑器中的该键输入，请谨慎使用。
+            点击「编辑」进入捕获：
+            <b>修饰键 + 主键</b> 追加一段，可连续追加多段；
+            <b>回车</b>（主/小键盘均可）确认；
+            <b>退格</b> 删除最后一段；<b>Esc</b> 取消。
+            组合键区分左右修饰键，也区分主键盘与小键盘。
         </div>
         <div id="shortcuts-table-host"></div>
     `;
@@ -58,17 +66,13 @@ function renderTable() {
     const parts = [];
     for (const [groupName, actions] of groups) {
         parts.push(`<table class="settings-table">`);
-        parts.push(`<thead><tr><th colspan="3" class="settings-table-group">${groupName}</th></tr></thead>`);
+        parts.push(`<thead><tr><th colspan="3" class="settings-table-group">${escapeHtml(groupName)}</th></tr></thead>`);
         parts.push(`<tbody>`);
         for (const a of actions) {
-            const val = shortcuts[a.id] || '';
-            const display = val
-                ? `<span class="shortcut-key">${escapeHtml(formatShortcut(val))}</span>`
-                : `<span class="shortcut-empty">未绑定</span>`;
             parts.push(`
                 <tr data-action="${a.id}">
                     <td class="col-desc">${escapeHtml(a.label)}</td>
-                    <td class="col-key">${display}</td>
+                    <td class="col-key"></td>
                     <td class="col-ops">
                         <button type="button" class="settings-action-btn" data-op="edit" data-id="${a.id}">编辑</button>
                         <button type="button" class="settings-action-btn" data-op="reset" data-id="${a.id}">重置</button>
@@ -82,6 +86,8 @@ function renderTable() {
 
     host.innerHTML = parts.join('');
     host.addEventListener('click', onTableClick);
+
+    for (const a of ACTIONS) refreshRow(a.id);
 }
 
 function onTableClick(e) {
@@ -90,7 +96,6 @@ function onTableClick(e) {
     const op = btn.dataset.op;
     const id = btn.dataset.id;
     if (!id) return;
-
     if (op === 'edit') startCapture(id);
     else if (op === 'reset') resetAction(id);
     else if (op === 'unbind') unbindAction(id);
@@ -103,7 +108,7 @@ function refreshRow(id) {
     if (!keyEl) return;
     const val = shortcuts[id] || '';
     keyEl.innerHTML = val
-        ? `<span class="shortcut-key">${escapeHtml(formatShortcut(val))}</span>`
+        ? `<span class="shortcut-key">${escapeHtml(formatShortcutSequence(val))}</span>`
         : `<span class="shortcut-empty">未绑定</span>`;
 }
 
@@ -143,8 +148,10 @@ function startCapture(actionId) {
     overlay.innerHTML = `
         <div class="shortcut-capture-box">
             <div class="shortcut-capture-title">为「${escapeHtml(actionMeta.label)}」设置快捷键</div>
-            <div class="shortcut-capture-preview" id="shortcut-capture-preview">请按下快捷键…</div>
-            <div class="shortcut-capture-hint">按 Esc 取消（若想绑定 Esc 本身，请加修饰键）</div>
+            <div class="shortcut-capture-preview" id="shortcut-capture-preview"></div>
+            <div class="shortcut-capture-hint">
+                修饰键 + 主键追加一段；回车确认；退格删除最后一段；Esc 取消
+            </div>
         </div>
     `;
     document.body.appendChild(overlay);
@@ -154,11 +161,13 @@ function startCapture(actionId) {
         overlay,
         previewEl: overlay.querySelector('#shortcut-capture-preview'),
         pressedMods: new Set(),
+        segments: [],
     };
 
     window.addEventListener('keydown', onCaptureKeyDown, true);
     window.addEventListener('keyup', onCaptureKeyUp, true);
     window.addEventListener('blur', onCaptureBlur);
+    updateCapturePreview();
 }
 
 function closeCapture() {
@@ -183,6 +192,34 @@ function clearCaptureError() {
     if (err) err.remove();
 }
 
+function showCaptureError(text) {
+    if (!captureState) return;
+    const box = captureState.overlay.querySelector('.shortcut-capture-box');
+    let err = box.querySelector('.shortcut-capture-error');
+    if (!err) {
+        err = document.createElement('div');
+        err.className = 'shortcut-capture-error';
+        box.appendChild(err);
+    }
+    err.textContent = text;
+}
+
+function updateCapturePreview() {
+    if (!captureState) return;
+    const { segments, pressedMods } = captureState;
+
+    const parts = segments.map(s => formatShortcut(s));
+
+    if (pressedMods.size > 0) {
+        const modsDisplay = [...pressedMods].map(c => formatShortcut(c)).join(' + ');
+        parts.push(modsDisplay + ' + …');
+    }
+
+    captureState.previewEl.textContent = parts.length
+        ? parts.join('，')
+        : '请按下快捷键序列…';
+}
+
 function onCaptureKeyDown(e) {
     if (!captureState) return;
     e.preventDefault();
@@ -191,21 +228,43 @@ function onCaptureKeyDown(e) {
 
     clearCaptureError();
 
-    if (isModifierCode(e.code)) {
-        captureState.pressedMods.add(e.code);
-        updateCapturePreview();
-        return;
-    }
     if (e.repeat) return;
 
-    // 无修饰键的 Esc = 取消
+    // 回车（主/小键盘）确认
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+        if (captureState.segments.length > 0) {
+            const str = captureState.segments.join(' ');
+            applyCaptured(captureState.actionId, str);
+        }
+        return;
+    }
+
+    // Esc 取消（无修饰键时）
     if (e.code === 'Escape' && captureState.pressedMods.size === 0) {
         closeCapture();
         return;
     }
 
-    const str = buildShortcutString(captureState.pressedMods, e.code);
-    applyCaptured(captureState.actionId, str);
+    // 退格删除最后一段
+    if (e.code === 'Backspace') {
+        if (captureState.segments.length > 0) {
+            captureState.segments.pop();
+            updateCapturePreview();
+        }
+        return;
+    }
+
+    // 修饰键：加入当前集合，更新预览
+    if (isModifierCode(e.code)) {
+        captureState.pressedMods.add(e.code);
+        updateCapturePreview();
+        return;
+    }
+
+    // 主键：构造一段，追加到 segments（不关闭浮层）
+    const segment = buildShortcutString(captureState.pressedMods, e.code);
+    captureState.segments.push(segment);
+    updateCapturePreview();
 }
 
 function onCaptureKeyUp(e) {
@@ -218,36 +277,15 @@ function onCaptureKeyUp(e) {
     }
 }
 
-function updateCapturePreview() {
-    if (!captureState) return;
-    const mods = [...captureState.pressedMods];
-    if (mods.length === 0) {
-        captureState.previewEl.textContent = '请按下快捷键…';
-        return;
-    }
-    // 只显示已按下的修饰键，后面跟省略号表示等待主键
-    captureState.previewEl.textContent =
-        mods.map(c => formatShortcut(c)).join(' + ') + ' + …';
-}
-
 function applyCaptured(actionId, str) {
-    // 冲突检测：拒绝并提示
+    // 冲突检测（按完整序列比较）
     const conflict = Object.entries(shortcuts).find(
         ([id, val]) => id !== actionId && val === str
     );
     if (conflict) {
         const conflictMeta = ACTIONS.find(a => a.id === conflict[0]);
         const name = conflictMeta ? conflictMeta.label : conflict[0];
-        const box = captureState.overlay.querySelector('.shortcut-capture-box');
-        let err = box.querySelector('.shortcut-capture-error');
-        if (!err) {
-            err = document.createElement('div');
-            err.className = 'shortcut-capture-error';
-            box.appendChild(err);
-        }
-        err.textContent = `「${formatShortcut(str)}」已被「${name}」使用`;
-        captureState.pressedMods.clear();
-        updateCapturePreview();
+        showCaptureError(`「${formatShortcutSequence(str)}」已被「${name}」使用`);
         return;
     }
 
