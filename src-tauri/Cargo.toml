@@ -1,6 +1,6 @@
 [package]
 name = "markdown-looker"
-version = "1.1.0"
+version = "1.3.0"
 description = "像素级还原网页版GitHub的双栏markdown编辑器"
 authors = ["碳基坤"]
 license = "MIT"
