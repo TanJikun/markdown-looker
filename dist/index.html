@@ -4,11 +4,11 @@
 <head>
   <meta charset="utf-8">
   <title>Markdown Looker</title>
-  <script type="module" crossorigin src="/assets/main-GpSGkIh8.js"></script>
+  <script type="module" crossorigin src="/assets/main-BeMx35Bk.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-CS1eXPs2.js">
   <link rel="modulepreload" crossorigin href="/assets/shiki-Df6LOx4X.js">
   <link rel="modulepreload" crossorigin href="/assets/shortcuts-D_nznk2l.js">
-  <link rel="stylesheet" crossorigin href="/assets/main-DUxhgXLF.css">
+  <link rel="stylesheet" crossorigin href="/assets/main-BnSJQo4q.css">
 </head>
 
 <body>
@@ -19,6 +19,19 @@
         <button id="menu-open">打开文件 <span class="shortcut" data-shortcut-for="open">Ctrl+O</span></button>
         <button id="menu-save">保存 <span class="shortcut" data-shortcut-for="save">Ctrl+S</span></button>
         <button id="menu-save-as">另存为 <span class="shortcut" data-shortcut-for="saveAs">Ctrl+Shift+S</span></button>
+        <hr>
+        <div class="menu-row has-submenu">
+          <button id="menu-export">导出 <span class="submenu-arrow">▸</span></button>
+          <div class="submenu">
+            <div class="menu-row has-submenu">
+              <button id="menu-export-html">HTML <span class="submenu-arrow">▸</span></button>
+              <div class="submenu">
+                <button id="menu-export-html-dark">深色</button>
+                <button id="menu-export-html-light">浅色</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <hr>
         <button id="menu-settings">设置</button>
       </div>

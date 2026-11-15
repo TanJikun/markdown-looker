@@ -319,6 +319,24 @@ async fn save_dialog(
     Ok(file_path.map(file_path_to_string))
 }
 
+#[tauri::command]
+async fn save_html_dialog(
+    app: tauri::AppHandle,
+    default_name: Option<String>,
+) -> Result<Option<String>, String> {
+    let mut dialog = app
+        .dialog()
+        .file()
+        .add_filter("HTML", &["html", "htm"]);
+
+    if let Some(name) = default_name {
+        dialog = dialog.set_file_name(name);
+    }
+
+    let file_path = dialog.blocking_save_file();
+    Ok(file_path.map(file_path_to_string))
+}
+
 // ==================== 入口 ====================
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -361,6 +379,7 @@ pub fn run() {
             save_file,
             open_dialog,
             save_dialog,
+            save_html_dialog,
             load_config,
             save_config,
             append_log,
