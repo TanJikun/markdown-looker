@@ -21,6 +21,10 @@ import {
 
 import 'katex/dist/katex.min.css';
 
+// 导出 HTML 时内嵌样式（以字符串形式拿到编译后的 CSS）
+import styleCss from './style.css?inline';
+import katexCss from 'katex/dist/katex.min.css?inline';
+
 import { initToolbar } from './toolbar.js';
 
 import {
@@ -1703,3 +1707,125 @@ function setupWindowCloseHandler() {
 }
 
 setupWindowCloseHandler();
+
+// =========================================================
+// 导出为 HTML（深色 / 浅色）
+// =========================================================
+
+// 覆盖 style.css 里为编辑器布局服务的 body 规则
+const EXPORT_OVERRIDE_CSS = `
+body {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    padding: 32px 40px !important;
+}
+`;
+
+function buildExportHtml(bodyHtml, title, theme) {
+    const esc = (s) => String(s || '').replace(/[<>&"]/g, c => (
+        { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]
+    ));
+    const htmlClass = theme === 'light' ? ' class="light"' : '';
+    const css = `${styleCss}\n${katexCss}\n${EXPORT_OVERRIDE_CSS}`;
+
+    return `<!doctype html>
+<html lang="zh-CN"${htmlClass}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<style>
+${css}
+</style>
+</head>
+<body>
+<div id="output">
+${bodyHtml}
+</div>
+</body>
+</html>`;
+}
+
+/**
+ * 克隆当前预览 DOM，并移除仅供软件内交互的元素/属性。
+ * Mermaid SVG、Shiki 高亮后的 pre、KaTeX 公式都在 innerHTML 里被原样保留。
+ */
+function cleanPreviewForExport() {
+    const clone = outputEl.cloneNode(true);
+
+    // 复制按钮、Mermaid 全屏按钮
+    clone.querySelectorAll(
+        '.copy-code-btn, .mermaid-copy-btn, .mermaid-expand-btn'
+    ).forEach(el => el.remove());
+
+    // 滚动同步用的锚点
+    clone.querySelectorAll('[data-source-line]')
+        .forEach(el => el.removeAttribute('data-source-line'));
+
+    // 去掉未渲染完的占位状态
+    clone.querySelectorAll('.mermaid-wrapper')
+        .forEach(el => el.classList.remove('mermaid-pending'));
+
+    return clone;
+}
+
+/**
+ * 把 asset:// 协议的本地图片转成 data URL，尽量保证导出文件脱离原目录也能看。
+ * 失败时保留原 src（不会中断导出）。
+ */
+async function inlineAssetImages(root) {
+    const imgs = [...root.querySelectorAll('img')];
+    await Promise.all(imgs.map(async (img) => {
+        const src = img.getAttribute('src') || '';
+        if (!/asset(\.localhost|:)/i.test(src)) return;
+        try {
+            const res = await fetch(src);
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const dataUrl = await new Promise((resolve, reject) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result);
+                fr.onerror = reject;
+                fr.readAsDataURL(blob);
+            });
+            img.setAttribute('src', dataUrl);
+        } catch (e) {
+            console.warn('[export] 图片内嵌失败，保留原 src:', src, e);
+        }
+    }));
+}
+
+async function exportCurrentTabAsHtml(theme) {
+    if (!isTauri) {
+        alert('导出功能需要在桌面版中使用');
+        return;
+    }
+
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (!tab) return;
+
+    // 用户此刻看到的渲染结果
+    const clone = cleanPreviewForExport();
+    await inlineAssetImages(clone);
+
+    const baseName = (tab.name || '未命名.md')
+        .replace(/\.(md|markdown|mdx|txt)$/i, '');
+    const html = buildExportHtml(clone.innerHTML, baseName, theme);
+
+    try {
+        const path = await invoke('save_html_dialog', {
+            defaultName: `${baseName}.html`,
+        });
+        if (!path) return;
+        await invoke('save_file', { path, content: html });
+    } catch (e) {
+        console.error('导出 HTML 失败:', e);
+        alert('导出失败: ' + String(e));
+    }
+}
+
+document.getElementById('menu-export-html-dark')
+    ?.addEventListener('click', () => exportCurrentTabAsHtml('dark'));
+document.getElementById('menu-export-html-light')
+    ?.addEventListener('click', () => exportCurrentTabAsHtml('light'));
