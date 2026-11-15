@@ -245,20 +245,46 @@ body {
 }
 
 #editor-container {
-    width: 50%;
     height: 100%;
     border-right: 1px solid var(--border);
     background: var(--bg);
 }
 
 #preview {
-    flex: 1;
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 32px 40px;
     background: var(--bg);
     scroll-behavior: auto;
+}
+
+/* ---------- 三种视图模式 ---------- */
+#main-content.mode-split #editor-container {
+    width: 50%;
+    border-right: 1px solid var(--border);
+}
+
+#main-content.mode-split #preview {
+    flex: 1;
+}
+
+#main-content.mode-preview #editor-container {
+    display: none;
+}
+
+#main-content.mode-preview #preview {
+    width: 100%;
+    flex: 1;
+}
+
+#main-content.mode-source #preview {
+    display: none;
+}
+
+#main-content.mode-source #editor-container {
+    width: 100%;
+    border-right: none;
 }
 
 #output {
@@ -305,7 +331,6 @@ body {
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
-/* 代码块：无边框、无圆角，只有背景色 */
 #output pre {
     background-color: var(--code-bg);
     padding: 16px;
@@ -322,7 +347,6 @@ body {
     color: inherit;
 }
 
-/* Shiki 输出的 <pre class="shiki"> */
 #output pre.shiki {
     background-color: var(--code-bg) !important;
 }
@@ -691,11 +715,6 @@ body {
 /* =========================================================
    7. Shiki 双主题切换
    ========================================================= */
-/* 
- * 只对 .shiki (pre) 容器应用背景，
- * 绝对不要对 .shiki span 应用 background-color，
- * 否则每个高亮 token 都会变成色块。
- */
 .shiki {
     background-color: var(--code-bg) !important;
     color: var(--shiki-dark) !important;
@@ -773,9 +792,30 @@ html.light .shiki span {
     color: var(--muted);
 }
 
+/* 视图切换按钮的 active 态 */
+.md-toolbar-btn.active {
+    background: rgba(88, 166, 255, 0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.md-toolbar-btn.active:hover:not(:disabled) {
+    background: rgba(88, 166, 255, 0.22);
+    color: var(--accent);
+}
+
+/* 工具栏右侧视图按钮组 */
+.toolbar-view-group {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-left: 8px;
+    flex-shrink: 0;
+}
+
 /* =========================================================
    8.1 下拉面板（表格 / 警示块）
-   风格对齐主题二级菜单：无遮罩、panel 背景、圆角边框 + 阴影
    ========================================================= */
 .toolbar-dropdown {
     position: fixed;
@@ -793,7 +833,6 @@ html.light .shiki span {
     flex-direction: column;
 }
 
-/* 警示块里的选项条目 */
 .toolbar-dropdown-item {
     background: transparent;
     border: none;
@@ -813,7 +852,6 @@ html.light .shiki span {
     background: var(--hover-bg);
 }
 
-/* 表格里的输入区 */
 .toolbar-dropdown-section {
     padding: 8px 12px;
     display: flex;

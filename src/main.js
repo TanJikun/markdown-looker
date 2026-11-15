@@ -35,16 +35,13 @@ import {
 // 本地图片路径处理
 // =========================================================
 function resolvePath(basePath, relativePath) {
-    // 如果是绝对路径 (Windows 盘符 或 Unix / 开头)，直接返回
     if (/^([a-zA-Z]:[\\/]|\/)/.test(relativePath)) {
         return relativePath;
     }
 
-    // 统一分隔符为 /
     let base = basePath.replace(/\\/g, '/');
     let rel = relativePath.replace(/\\/g, '/');
 
-    // 获取当前文件所在的目录
     const lastSlashIndex = base.lastIndexOf('/');
     let dir = lastSlashIndex !== -1 ? base.substring(0, lastSlashIndex) : '';
 
@@ -54,7 +51,6 @@ function resolvePath(basePath, relativePath) {
 
     let fullPath = dir + '/' + rel;
 
-    // 使用栈解析 . 和 ..
     const parts = fullPath.split('/');
     const resolved = [];
     for (let i = 0; i < parts.length; i++) {
@@ -65,7 +61,6 @@ function resolvePath(basePath, relativePath) {
         }
         if (part === '..') {
             if (resolved.length > 1 || (resolved.length === 1 && resolved[0] !== '')) {
-                // 如果已经到达盘符根目录，不要 pop
                 if (resolved[resolved.length - 1].endsWith(':')) {
                     continue;
                 }
@@ -87,7 +82,6 @@ function fixImageSources(container, currentFilePath) {
         let src = img.getAttribute('src');
         if (!src) return;
 
-        // 跳过网络链接、data: 和已经转换过的链接
         if (/^(https?:|data:|blob:|asset:)/.test(src)) return;
 
         let absolutePath = '';
@@ -98,12 +92,10 @@ function fixImageSources(container, currentFilePath) {
         } else if (currentFilePath) {
             absolutePath = resolvePath(currentFilePath, src);
         } else {
-            // 如果是未命名的文件，没有路径，无法解析相对路径
             return;
         }
 
         try {
-            // 将本地绝对路径转换为 Tauri 可访问的 URL
             img.src = convertFileSrc(absolutePath);
         } catch (e) {
             console.error('图片路径转换失败:', e, absolutePath);
@@ -115,7 +107,6 @@ self.MonacoEnvironment = {
     getWorker() { return new editorWorker(); }
 };
 
-// 提前初始化 Shiki，避免首次编辑时延迟。
 initShiki().catch(err => console.warn('[shiki] 初始化失败:', err));
 
 // =========================================================
@@ -146,7 +137,6 @@ function readCachedTheme() {
 let currentTheme = readCachedTheme();
 let initialResolvedTheme = resolveTheme(currentTheme);
 
-// 立即把浅色 class 挂上，避免启动闪烁
 document.documentElement.classList.toggle('light', initialResolvedTheme === 'light');
 
 // =========================================================
@@ -379,8 +369,85 @@ const fallbackInput = document.getElementById('fallbackInput');
 scrollSync.initialize(editor, previewWrap, { contentRoot: outputEl });
 scrollSync.enable();
 
-const toolbarCtl = initToolbar(editor, {
+// =========================================================
+// 视图模式：split / preview / source
+// =========================================================
+const VIEW_MODES = ['split', 'preview', 'source'];
+let currentViewMode = 'split';
+let toolbarCtl = null;
+
+function normalizeViewMode(m) {
+    return VIEW_MODES.includes(m) ? m : 'split';
+}
+
+function applyViewModeLayout(mode) {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    main.classList.remove('mode-split', 'mode-preview', 'mode-source');
+    main.classList.add(`mode-${mode}`);
+
+    if (mode === 'split') {
+        scrollSync.enable();
+    } else {
+        scrollSync.disable();
+    }
+
+    // 显示/隐藏切换后 Monaco 需要重新测量
+    requestAnimationFrame(() => {
+        try { editor.layout(); } catch (_) { /* noop */ }
+        if (mode !== 'source') scrollSync.rebuildAnchors();
+    });
+}
+
+async function persistViewMode(mode) {
+    if (!isTauri) return;
+    try {
+        // 读 → 改 → 写，避免覆盖其他配置字段
+        const cfg = await invoke('load_config');
+        cfg.view_mode = mode;
+        await invoke('save_config', { config: cfg });
+    } catch (e) {
+        console.error('保存视图模式失败:', e);
+    }
+}
+
+function setViewMode(mode, { persist = true } = {}) {
+    const next = normalizeViewMode(mode);
+    if (next === currentViewMode) {
+        // 同步一次高亮，避免外部调用时状态不一致
+        if (toolbarCtl) toolbarCtl.syncViewButtons(next);
+        return;
+    }
+    currentViewMode = next;
+    applyViewModeLayout(next);
+    if (toolbarCtl) toolbarCtl.syncViewButtons(next);
+    if (persist) persistViewMode(next);
+}
+
+async function initViewMode() {
+    if (!isTauri) {
+        applyViewModeLayout('split');
+        return;
+    }
+    try {
+        const cfg = await invoke('load_config');
+        const mode = normalizeViewMode(cfg && cfg.view_mode);
+        currentViewMode = mode;
+        applyViewModeLayout(mode);
+        if (toolbarCtl) toolbarCtl.syncViewButtons(mode);
+    } catch (e) {
+        console.error('读取视图模式失败:', e);
+        applyViewModeLayout('split');
+    }
+}
+
+// =========================================================
+// 工具栏
+// =========================================================
+toolbarCtl = initToolbar(editor, {
     refreshPreview: () => updatePreview(editor.getValue()),
+    setViewMode: (m) => setViewMode(m),
+    getViewMode: () => currentViewMode,
 });
 
 // =========================================================
@@ -434,20 +501,16 @@ async function handleImageFile(editor, file) {
     const placeholderId = `正在上传-${Date.now()}`;
     const placeholder = `![正在上传](${placeholderId})`;
 
-    // 1. 立即插入占位符
     insertTextAtCursor(editor, placeholder);
 
     try {
-        // 2. 获取配置和当前文件路径
         const config = await tauri.core.invoke('load_config');
         const activeTab = tabs.find(t => t.id === activeTabId);
         const mdPath = activeTab ? activeTab.path : null;
 
-        // 3. 读取二进制数据
         const arrayBuffer = await file.arrayBuffer();
         const bytes = Array.from(new Uint8Array(arrayBuffer));
 
-        // 4. 调用后端保存/上传
         const resultUrl = await tauri.core.invoke('save_or_upload_image', {
             config,
             mdPath,
@@ -455,7 +518,6 @@ async function handleImageFile(editor, file) {
             bytes
         });
 
-        // 5. 替换占位符
         replacePlaceholder(editor, placeholder, `![图片](${resultUrl})`);
     } catch (err) {
         console.error('图片处理失败:', err);
@@ -464,9 +526,7 @@ async function handleImageFile(editor, file) {
 }
 
 function setupImagePaster(editor) {
-    // 直接全局监听 paste 的捕获阶段，最稳定，能避开 Monaco 内部 textarea 的重新渲染
     document.addEventListener('paste', async (e) => {
-        // 如果当前焦点不在编辑器内，或者编辑器只读，直接放行
         if (!editor.hasTextFocus() || editor.getOption(monaco.editor.EditorOption.readOnly)) {
             return;
         }
@@ -474,7 +534,6 @@ function setupImagePaster(editor) {
         const clipboardData = e.clipboardData;
         if (!clipboardData) return;
 
-        // 1. 检查是否有二进制图片
         let imageFile = null;
         const items = clipboardData.items;
         if (items) {
@@ -486,7 +545,6 @@ function setupImagePaster(editor) {
             }
         }
 
-        // 2. 如果没有二进制图片，尝试提取纯文本路径或 URL
         let originalPath = '';
         if (!imageFile) {
             const uriList = clipboardData.getData('text/uri-list');
@@ -507,11 +565,10 @@ function setupImagePaster(editor) {
             }
         }
 
-        // 3. 如果有图片或路径，进行拦截并处理
         if (imageFile || originalPath) {
             e.preventDefault();
             e.stopPropagation();
-            e.stopImmediatePropagation(); // 强行阻断 Monaco 的粘贴流
+            e.stopImmediatePropagation();
 
             if (originalPath) {
                 insertTextAtCursor(editor, `![图片](${originalPath})`);
@@ -523,7 +580,6 @@ function setupImagePaster(editor) {
     }, true);
 }
 
-// 初始化监听
 setupImagePaster(editor);
 
 // =========================================================
@@ -1128,9 +1184,8 @@ async function handleCloseTab(tabId) {
         const action = await showSaveConfirmDialog(tab.name);
         if (action === 'save') {
             const ok = await saveTab(tabId, false);
-            if (!ok) return; // 保存失败 / 用户在系统「另存为」里取消 => 中止关闭
+            if (!ok) return;
         }
-        // action === 'cancel' => 放弃保存，继续关闭
     }
 
     removeTab(tabId);
@@ -1143,7 +1198,6 @@ function removeTab(tabId) {
     tabs.splice(idx, 1);
 
     if (tabs.length === 0) {
-        // 关闭所有后至少保留一个空白标签
         activeTabId = null;
         createTab('未命名.md', '');
         return;
@@ -1164,7 +1218,6 @@ async function openSettingsWindow() {
     const WebviewWindow = window.__TAURI__.webviewWindow.WebviewWindow;
     const getCurrentWindow = window.__TAURI__.window.getCurrentWindow;
 
-    // 已开则聚焦
     try {
         const existing = await WebviewWindow.getByLabel('settings');
         if (existing) {
@@ -1173,7 +1226,6 @@ async function openSettingsWindow() {
         }
     } catch (_) { /* noop */ }
 
-    // 读取配置里的 ratio
     let ratio = 0.8;
     try {
         const cfg = await invoke('load_config');
@@ -1184,7 +1236,6 @@ async function openSettingsWindow() {
         console.warn('读取窗口比例失败:', e);
     }
 
-    // 绝对居中计算：父窗口 outer 中心 - 新窗口尺寸/2
     const parent = getCurrentWindow();
     let w = 800, h = 600, x = null, y = null;
     try {
@@ -1210,8 +1261,8 @@ async function openSettingsWindow() {
         title: '设置',
         width: w,
         height: h,
-        resizable: false,       // 用户不可拖拽缩放手柄
-        decorations: false,     // 无原生标题栏 → 用户无法拖动窗口
+        resizable: false,
+        decorations: false,
         minimizable: false,
         maximizable: false,
         skipTaskbar: true,
@@ -1252,7 +1303,9 @@ async function persistTheme(theme) {
 
     if (isTauri) {
         try {
-            await invoke('save_config', { config: { theme } });
+            const cfg = await invoke('load_config');
+            cfg.theme = theme;
+            await invoke('save_config', { config: cfg });
         } catch (e) {
             console.error('保存主题配置失败:', e);
         }
@@ -1383,7 +1436,7 @@ async function saveTab(tabId, saveAs = false) {
             alert('打开保存对话框失败：' + e);
             return false;
         }
-        if (!path) return false; // 用户取消保存对话框
+        if (!path) return false;
     }
 
     try {
@@ -1412,14 +1465,14 @@ document.getElementById('menu-save-as').onclick = () => handleSave(true);
 document.getElementById('menu-settings').onclick = () => openSettingsWindow();
 
 // =========================================================
-// 快捷键子系统（支持多段序列，空格分隔，1.5s 超时重置）
+// 快捷键子系统
 // =========================================================
 
 let shortcutsMap = { ...DEFAULT_SHORTCUTS };
-let parsedShortcuts = [];        // [{ id, segments: [{mods, key}, ...] }]
+let parsedShortcuts = [];
 const pressedMods = new Set();
 
-let pendingMatch = null;         // { candidateIds: Set<id>, index, timer }
+let pendingMatch = null;
 
 function rebuildParsedShortcuts() {
     parsedShortcuts = [];
@@ -1491,7 +1544,6 @@ function setupGlobalShortcuts() {
 
         const segment = { mods: new Set(pressedMods), key: e.code };
 
-        // 1. 尝试延续 pendingMatch
         if (pendingMatch) {
             const nextIdx = pendingMatch.index + 1;
             const candidates = findCandidatesAt(nextIdx, segment);
@@ -1506,7 +1558,6 @@ function setupGlobalShortcuts() {
                     executeShortcutAction(id);
                     return;
                 }
-                // 继续等待下一段
                 const ids = new Set(candidates.map(c => c.id));
                 resetPendingMatch();
                 pendingMatch = { candidateIds: ids, index: nextIdx };
@@ -1515,11 +1566,9 @@ function setupGlobalShortcuts() {
                 e.stopPropagation();
                 return;
             }
-            // 延续失败，重置后尝试从头匹配
             resetPendingMatch();
         }
 
-        // 2. 从头匹配
         const candidates = findCandidatesAt(0, segment);
         if (candidates.length === 0) return;
 
@@ -1532,7 +1581,6 @@ function setupGlobalShortcuts() {
             return;
         }
 
-        // 3. 部分匹配，等待下一段
         pendingMatch = {
             candidateIds: new Set(candidates.map(c => c.id)),
             index: 0,
@@ -1584,6 +1632,11 @@ if (isTauri) {
         }
     });
 
+    listen('settings:view-mode-changed', (event) => {
+        const mode = event.payload && event.payload.view_mode;
+        if (mode) setViewMode(mode, { persist: false });
+    });
+
     invoke('get_initial_file').then(fileData => {
         if (fileData && fileData.content) {
             const path = fileData.path || null;
@@ -1600,6 +1653,7 @@ if (isTauri) {
 }
 
 initTheme();
+initViewMode();
 
 // --- 关闭窗口：拦截 + 逐个询问脏标签 ---
 let closingInProgress = false;

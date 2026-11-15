@@ -5,6 +5,7 @@
  * - 区1 需要非空选区，其余始终可用。
  * - 每次按钮操作合并为一次撤销步骤。
  * - 「表格」「警示块」下拉面板：直接弹在按钮下方，无黑色遮罩。
+ * - 最右侧视图切换按钮组（双栏 / 预览 / 源码）。
  */
 import * as monaco from 'monaco-editor';
 import { ICONS } from './toolbar-icons.js';
@@ -19,10 +20,6 @@ function isPureEmptyLine(content) {
     return content.trim() === '';
 }
 
-/**
- * 选区覆盖的整行范围。
- * 若选区结束在下一行行首，不包含该终点行。
- */
 function getLineRange(model, sel) {
     const startLine = sel.startLineNumber;
     let endLine = sel.endLineNumber;
@@ -32,10 +29,6 @@ function getLineRange(model, sel) {
     return { startLine, endLine };
 }
 
-/**
- * 把选区扩展到覆盖整行。
- * 选区结束在行首且不是起始行时，不包含该行。
- */
 function expandToLines(model, sel) {
     const startLine = sel.startLineNumber;
     let endLine = sel.endLineNumber;
@@ -95,7 +88,6 @@ function wrapSelection(editor, left, right) {
         endCol = lines[lines.length - 1].length + 1;
     }
 
-    // ★ 选中整段（例如 `*苹果*` 整串），而不是只把光标停在末尾。
     editor.setSelection(new monaco.Selection(
         start.lineNumber, start.column,
         endLine, endCol
@@ -432,9 +424,9 @@ function insertHr(editor) {
     editor.pushUndoStop();
 }
 
-// ---------- 下拉面板（替代原遮罩弹窗） ----------
+// ---------- 下拉面板 ----------
 
-let currentPanel = null; // { el, anchor, cleanup }
+let currentPanel = null;
 
 function closePanel() {
     if (!currentPanel) return;
@@ -443,11 +435,6 @@ function closePanel() {
     currentPanel = null;
 }
 
-/**
- * 在 anchorEl 下方弹出面板。
- * 面板是独立的 fixed 定位元素，不带遮罩；点击外部或尺寸变化时自动关闭。
- * 再次点击同一按钮 => toggle 关闭。
- */
 function openPanel(anchorEl, buildContent) {
     if (currentPanel && currentPanel.anchor === anchorEl) {
         closePanel();
@@ -457,7 +444,6 @@ function openPanel(anchorEl, buildContent) {
 
     const panel = document.createElement('div');
     panel.className = 'toolbar-dropdown';
-    // 先在隐藏状态下挂到 body，测量宽高
     panel.style.visibility = 'hidden';
     document.body.appendChild(panel);
     buildContent(panel);
@@ -485,7 +471,6 @@ function openPanel(anchorEl, buildContent) {
     };
     const onResize = () => closePanel();
 
-    // 延迟一帧注册，避免本次点击的 mousedown 立即关闭面板
     setTimeout(() => {
         document.addEventListener('mousedown', onMouseDown, true);
         const firstInput = panel.querySelector('input');
@@ -615,6 +600,13 @@ const BUTTONS = [
 
 const INLINE_ACTIONS = new Set(['bold', 'italic', 'strike', 'inlineCode', 'highlight']);
 
+/* ---------- 视图切换按钮配置 ---------- */
+const VIEW_MODES = [
+    { mode: 'split', icon: 'split', title: '双栏' },
+    { mode: 'preview', icon: 'preview', title: '预览' },
+    { mode: 'source', icon: 'source', title: '源码' },
+];
+
 function buildButton(spec) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -663,6 +655,37 @@ export function initToolbar(editor, options = {}) {
         container.appendChild(btn);
     }
 
+    /* ---------- 右侧视图切换按钮组 ---------- */
+    const viewGroup = document.createElement('div');
+    viewGroup.className = 'toolbar-view-group';
+
+    const viewButtons = VIEW_MODES.map(({ mode, icon, title }) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'md-toolbar-btn';
+        btn.title = title;
+        btn.dataset.viewMode = mode;
+        btn.innerHTML = ICONS[icon] || '';
+        btn.addEventListener('click', () => {
+            if (typeof options.setViewMode === 'function') {
+                options.setViewMode(mode);
+            }
+        });
+        viewGroup.appendChild(btn);
+        return btn;
+    });
+    container.appendChild(viewGroup);
+
+    function syncViewButtons(mode) {
+        viewButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.viewMode === mode);
+        });
+    }
+
+    // 初始化当前高亮
+    syncViewButtons(typeof options.getViewMode === 'function' ? options.getViewMode() : 'split');
+
+    /* ---------- 区1 使能状态 ---------- */
     const refreshInline = () => {
         const sel = editor.getSelection();
         const enabled = !!sel && !sel.isEmpty();
@@ -685,12 +708,11 @@ export function initToolbar(editor, options = {}) {
         return !!sel && !sel.isEmpty();
     };
 
-    // ★ 核心：把所有动作统一收口到一个函数，按钮 click 与快捷键都走这里。
     const dispatchAction = (action) => {
+        if (!action) return;
         if (!isActionAvailable(action)) return;
 
         const btn = getButton(action);
-        // table / alert 的下拉面板需要锚点；快捷键触发时锚到工具栏按钮下方
         const anchor = btn || editor.getDomNode() || document.body;
 
         switch (action) {
@@ -733,6 +755,8 @@ export function initToolbar(editor, options = {}) {
     container.addEventListener('click', (e) => {
         const btn = e.target.closest('.md-toolbar-btn');
         if (!btn || btn.disabled) return;
+        // 视图按钮没有 data-action，不走 dispatchAction
+        if (!btn.dataset.action) return;
         e.preventDefault();
         dispatchAction(btn.dataset.action);
     });
@@ -746,5 +770,6 @@ export function initToolbar(editor, options = {}) {
         dispatchAction,
         getButtonElement: getButton,
         isActionAvailable,
+        syncViewButtons,
     };
 }
