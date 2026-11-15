@@ -26,6 +26,10 @@ pub struct AppConfig {
     #[serde(default = "default_settings_window_ratio")]
     pub settings_window_ratio: f64,
 
+    // === 视图模式 ===
+    #[serde(default = "default_view_mode")]
+    pub view_mode: String, // "split" | "preview" | "source"
+
     // === 插入图片行为 ===
     #[serde(default = "default_insert_mode")]
     pub insert_image_mode: String, // "local" | "cloud"
@@ -53,6 +57,7 @@ pub struct AppConfig {
 
 fn default_theme() -> String { "system".to_string() }
 fn default_settings_window_ratio() -> f64 { 0.8 }
+fn default_view_mode() -> String { "split".to_string() }
 fn default_insert_mode() -> String { "local".to_string() }
 fn default_local_save_mode() -> String { "same_dir".to_string() }
 fn default_local_sub_dir_mode() -> String { "shared".to_string() }
@@ -63,6 +68,7 @@ impl Default for AppConfig {
         Self {
             theme: default_theme(),
             settings_window_ratio: default_settings_window_ratio(),
+            view_mode: default_view_mode(),
             insert_image_mode: default_insert_mode(),
             local_image_save_mode: default_local_save_mode(),
             local_fixed_dir: "".to_string(),
@@ -102,9 +108,6 @@ fn save_config(config: AppConfig) -> Result<(), String> {
 // ==================== PicNexus 路径与通用文件夹检测 ====================
 
 /// 把用户输入或环境变量里的值，解析成真实的 PicNexus.exe 路径。
-/// 规则：
-/// - 如果是文件：检查扩展名是不是 .exe，是则直接返回。
-/// - 如果是文件夹：**只看根目录**，寻找 PicNexus.exe，不递归子文件夹。
 fn resolve_picnexus_path(raw: &str) -> Option<String> {
     let p = Path::new(raw.trim());
     if !p.exists() {
@@ -125,7 +128,6 @@ fn resolve_picnexus_path(raw: &str) -> Option<String> {
     }
 
     if p.is_dir() {
-        // 只读根目录一层，不递归
         if let Ok(entries) = fs::read_dir(p) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -144,7 +146,6 @@ fn resolve_picnexus_path(raw: &str) -> Option<String> {
     None
 }
 
-/// 遍历 PATH 的每一项，寻找 PicNexus.exe，找到第一个即返回。
 #[tauri::command]
 fn detect_picnexus_path() -> Option<String> {
     let path_var = env::var("PATH").ok()?;
@@ -161,13 +162,11 @@ fn detect_picnexus_path() -> Option<String> {
     None
 }
 
-/// 校验用户手动输入/选择的路径是否有效。
 #[tauri::command]
 fn validate_picnexus_path(path: String) -> Option<String> {
     resolve_picnexus_path(&path)
 }
 
-/// 弹出文件夹选择框，让用户选择 PicNexus 所在目录，并校验。
 #[tauri::command]
 fn pick_picnexus_path(app: tauri::AppHandle) -> Option<String> {
     let folder = app.dialog().file().blocking_pick_folder();
@@ -178,7 +177,6 @@ fn pick_picnexus_path(app: tauri::AppHandle) -> Option<String> {
     None
 }
 
-/// 通用文件夹选择框（用于"本地固定位置"）
 #[tauri::command]
 fn pick_folder(app: tauri::AppHandle) -> Option<String> {
     let folder = app.dialog().file().blocking_pick_folder();
@@ -285,7 +283,6 @@ fn save_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| e.to_string())
 }
 
-/// 把 dialog 插件返回的 FilePath 转成路径字符串。
 fn file_path_to_string(file_path: FilePath) -> String {
     match file_path {
         FilePath::Path(p) => p.to_string_lossy().to_string(),
@@ -377,6 +374,7 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
 // ==================== 图片保存与上传 ====================
 
 #[tauri::command]
@@ -389,13 +387,13 @@ async fn save_or_upload_image(
     if config.insert_image_mode == "cloud" {
         // --- 云端上传逻辑 (PicNexus) ---
         let picnexus_exe = config.picnexus_path.ok_or("未配置 PicNexus 路径")?;
-        
+
         // 1. 保存到临时文件
         let mut temp_path = std::env::temp_dir();
         temp_path.push(&file_name);
         fs::write(&temp_path, &bytes).map_err(|e| format!("写入临时文件失败: {}", e))?;
 
-        // 2. 根据截图，PicNexus 的正确 CLI 语法为：picnexus --service <bed> <file>
+        // 2. PicNexus CLI 语法：picnexus --service <bed> <file>
         let mut cmd = Command::new(&picnexus_exe);
         if !config.picnexus_bed.trim().is_empty() {
             cmd.arg("--service").arg(config.picnexus_bed.trim());
@@ -407,7 +405,6 @@ async fn save_or_upload_image(
         let _ = fs::remove_file(&temp_path); // 清理临时文件
 
         if output.status.success() {
-            // 获取标准输出的链接，并清理可能的换行符或多余内容
             let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if url.is_empty() {
                 return Err("PicNexus 返回了空链接".into());
@@ -448,7 +445,6 @@ async fn save_or_upload_image(
         let target_path = target_dir.join(&file_name);
         fs::write(&target_path, bytes).map_err(|e| format!("保存图片失败: {}", e))?;
 
-        // 返回相对路径
         let relative_path = if config.local_image_save_mode == "fixed" {
             target_path.to_string_lossy().to_string()
         } else {

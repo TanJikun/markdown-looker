@@ -19,6 +19,7 @@ const getCurrentWindow = tauri?.window?.getCurrentWindow;
 // 面板注册表：顺序即导航顺序
 const PANELS = [
     { id: 'appearance', title: '外观', load: () => import('./settings/appearance.js') },
+    { id: 'view', title: '视图', load: () => import('./settings/view.js') },
     { id: 'imagehost', title: '图床', load: () => import('./settings/imagehost.js') },
     { id: 'shortcuts', title: '快捷键', load: () => import('./settings/shortcuts.js') },
 ];
@@ -27,6 +28,7 @@ const PANELS = [
 const config = {
     theme: 'system',
     settings_window_ratio: 0.8,
+    view_mode: 'split',
     picnexus_path: '',
 };
 

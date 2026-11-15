@@ -57,4 +57,17 @@ export const ICONS = {
         <circle cx="8" cy="11.5" r="0.5" fill="currentColor" stroke="none"/>`),
 
     hr: S(`<path d="M2 8h12"/>`),
+
+    /* ---------- 视图切换 ---------- */
+    split: S(`
+        <rect x="1.5" y="3" width="5.5" height="10" rx="1"/>
+        <rect x="9" y="3" width="5.5" height="10" rx="1"/>`),
+
+    preview: S(`
+        <path d="M1.5 8s2.5-4.5 6.5-4.5 6.5 4.5 6.5 4.5-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"/>
+        <circle cx="8" cy="8" r="1.8"/>`),
+
+    source: S(`
+        <path d="M5.5 4.5L2 8l3.5 3.5"/>
+        <path d="M10.5 4.5L14 8l-3.5 3.5"/>`),
 };
