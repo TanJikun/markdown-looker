@@ -146,6 +146,7 @@ function renderedBlockType(element) {
  * Assign stable source-line anchors to rendered top-level blocks.
  * @param {HTMLElement} root
  * @param {string} markdown
+ * @returns {void}
  */
 export function annotateSourceLines(root, markdown) {
     if (!root || typeof markdown !== 'string' || !markdown) return;

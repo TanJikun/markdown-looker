@@ -27,11 +27,21 @@
   - 支持 **KaTeX** 数学公式渲染（`$ ... $` 与 `$$ ... $$`）。
   - 支持 **Shiki** 代码块语法高亮，深浅主题切换零重新渲染，代码块右上角自带「一键复制」按钮。
   - 支持 GitHub 风格的 Alert 警告块（NOTE, TIP, WARNING 等）。
+- **导出为单文件 HTML**：菜单栏「导出 → HTML」提供深色 / 浅色两个选项，把**当前标签页**的渲染结果原样导出为一个自包含 HTML 文件。
+  - 导出内容 = 用户此刻看到的预览，Mermaid 图、Shiki 高亮、KaTeX 公式、GitHub Alert 全部保留。
+  - 样式（`style.css` + `katex.min.css`）以字符串内嵌，脱离原目录双击即可打开。
+  - 深色 / 浅色按所选模式固化到 `<html class="light">`，不依赖系统主题。
+  - 自动剔除仅供软件内交互的按钮（代码复制、Mermaid 全屏）和 `data-source-line` 锚点。
+  - 本地图片（`asset:` 协议）尝试转为 data URL 内嵌，失败则保留原路径，不中断导出。
 - **轻量级代码高亮**：
   - 内置 9 种常用语言（Java、C、C++、Python、Rust、JavaScript、HTML、CSS、Markdown），打包进主程序，首屏零闪烁。
   - 其余语言通过 exe 同级 `langs/` 目录按需加载，按实际使用选择性放入语法文件，不占打包体积。
 - **轻量级桌面应用**：打包生成的 `.exe` 体积小巧，启动迅速，原生支持文件关联（双击 `.md` 文件直接打开）。
 - **主题**：支持跟随系统 / 深色 / 浅色三种模式，自动记忆到本地存储与 Tauri 配置文件。
+- **可视化设置窗口**：独立的设置界面，按面板动态加载，修改即时写入 `config.json`：
+  - **外观**：主题三选一、渲染模式（双栏 / 预览 / 源码）、设置窗口大小（相对主窗口的百分比，拖动实时预览）。
+  - **图床**：插入图片行为（本地 / 云端），本地支持固定位置 / 相同目录 / 子目录三种策略，云端集成 [PicNexus](https://github.com/littlecode/PicNexus) CLI。
+  - **快捷键**：表格化管理所有动作的快捷键，支持编辑、重置、解绑，可录制多段序列（如 `Ctrl+K Ctrl+S`），并做冲突检测。
 
 ## 技术栈
 
@@ -61,6 +71,9 @@
 
 ```text
 markdown-looker/
+├── .github/
+│   └── workflows/
+│       └── build-macos.yml       # macOS 云端构建（Ad-hoc 签名 Universal dmg）
 ├── src/                          # 前端源码目录
 │   ├── core/                     # 核心逻辑
 │   │   ├── scroll-sync.js        # 双向滚动同步核心算法
@@ -69,8 +82,13 @@ markdown-looker/
 │   │   ├── debounce.js           # 性能防抖
 │   │   ├── eventBus.js           # 事件总线
 │   │   └── shiki-highlighter.js  # Shiki 高亮器（内置语言 + 额外语言按需加载）
+│   ├── settings/                 # 设置窗口各面板（按需动态 import）
+│   │   ├── appearance.js         # 外观：主题 / 渲染模式 / 设置窗口大小
+│   │   ├── imagehost.js          # 图床：本地保存 / PicNexus
+│   │   └── shortcuts.js          # 快捷键
 │   ├── toolbar.js                # Markdown 工具栏逻辑
 │   ├── toolbar-icons.js          # 工具栏图标
+│   ├── settings.js               # 设置窗口入口：导航 + 面板挂载
 │   ├── main.js                   # 应用入口，串联 Monaco 与 Markdown 渲染
 │   └── style.css                 # 全局 UI 与 Markdown 渲染样式
 ├── src-tauri/                    # Tauri (Rust) 后端目录
@@ -80,11 +98,16 @@ markdown-looker/
 │   ├── capabilities/
 │   │   └── default.json          # 窗口权限（关闭、主题等）
 │   ├── Cargo.toml                # Rust 依赖配置
-│   └── tauri.conf.json           # Tauri 应用配置
+│   ├── tauri.conf.json           # Tauri 基础配置（Windows 裸 exe）
+│   └── tauri.macos.conf.json     # macOS 平台覆盖（bundle + Ad-hoc 签名 + 文件关联）
+├── scripts/
+│   └── sync-version.mjs          # 版本号同步脚本
 ├── index.html                    # 主页面 HTML 骨架
+├── settings.html                 # 设置窗口 HTML 骨架
 ├── package.json                  # 前端依赖与脚本
 ├── vite.config.js                # Vite 配置
-└── build.bat                     # Windows 一键编译 + 复制到目标目录
+├── build.bat                     # Windows 本地一键编译（裸 exe）
+└── build-macos.bat               # macOS：触发云端构建 + 拉取 .dmg
 ```
 
 打包完成后，如果希望启用额外语言高亮，需要在 exe 同级目录创建 `langs/` 文件夹（详见下文「代码高亮与额外语言」）：
@@ -122,16 +145,18 @@ npm run tauri dev
 
 ### 生产环境构建
 
-本项目**不生成安装包**（`bundle.active: false`），构建产物就是一个裸 exe，不需要 WiX / NSIS 工具链。
+Windows 与 macOS 的构建入口不同：
 
-```bash
-npm run tauri build
+- **Windows**：双击根目录 `build.bat`，本地执行 `tauri build` 并复制裸 exe 到 `D:\software\markdown looker`。需全局安装 Tauri CLI（`cargo install tauri-cli` 或 `npm i -g @tauri-apps/cli`），因为 `build.bat` 调用的是 `tauri build` 而非 `npm run tauri build`。
+- **macOS**：双击根目录 `build-macos.bat`，触发 GitHub Actions 的 `build-macos.yml` 云端构建，完成后自动把 **Ad-hoc 签名的 Universal `.dmg`** 拉取到 `D:\software\markdown looker\macOS`。Tauri 无法在 Windows 上交叉编译 macOS 应用，所以必须走云端。
+
+基础配置 `src-tauri/tauri.conf.json` 中 `bundle.active` 为 `false`，因此 Windows 侧构建产物就是一个裸 exe，不需要 WiX / NSIS 工具链。macOS 侧由 `src-tauri/tauri.macos.conf.json` 覆盖为 `bundle.active: true`，产出 `.app` 与 `.dmg`。
+
+构建产物路径：
+
 ```
-
-构建产物路径固定为：
-
-```
-src-tauri/target/release/markdown-looker.exe
+src-tauri/target/release/markdown-looker.exe          # Windows（本地 build.bat）
+src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg   # macOS（云端 CI）
 ```
 
 `Cargo.toml` 的 crate 名决定了 exe 文件名，无法包含空格，因此产物名为 `markdown-looker.exe`（连字符）。如需带空格的名字，在复制到目标目录时改名即可。
@@ -141,10 +166,77 @@ src-tauri/target/release/markdown-looker.exe
 根目录的 `build.bat` 封装了完整流程：
 
 1. 结束可能占用 `markdown-looker.exe` 的残留进程；
-2. 执行 `tauri build`；
-3. 编译成功后，把 `src-tauri/target/release/markdown-looker.exe` 复制到 `D:\software\markdown looker\markdown-looker.exe`（目标目录不存在会自动创建）。
+2. 执行 `tauri build`（全局 Tauri CLI，非 `npm run tauri build`）；
+3. 编译成功后，把 `src-tauri\target\release\markdown-looker.exe` 复制到 `D:\software\markdown looker\markdown-looker.exe`（目标目录不存在会自动创建）。
 
-如需修改投放位置，改 `build.bat` 里的 `DEST_DIR` 即可。
+前置：全局安装 Tauri CLI（`cargo install tauri-cli` 或 `npm i -g @tauri-apps/cli`）。如需修改投放位置，改 `build.bat` 里的 `DEST_DIR` 即可。
+
+## macOS 版本构建（GitHub Actions + Ad-hoc 签名）
+
+Tauri 无法在 Windows 上交叉编译 macOS 应用，macOS 版本通过 GitHub Actions 的 `macos-latest` 运行器构建，产出 **Universal `.dmg`**（同时兼容 Apple Silicon 与 Intel）。
+
+### 两个构建入口
+
+| 入口 | 平台 | 行为 |
+| :--- | :--- | :--- |
+| `build.bat` | Windows | 本地 `tauri build` → 复制裸 exe 到 `D:\software\markdown looker` |
+| `build-macos.bat` | macOS | 触发 GitHub Actions → 等待完成 → 下载 `.dmg` 到 `D:\software\markdown looker\macOS` |
+
+### 平台配置：tauri.macos.conf.json
+
+`src-tauri/tauri.macos.conf.json` 是 Tauri v2 的**平台特定配置**，在 macOS 上构建时自动与基础 `tauri.conf.json` 合并，无需命令行传 `--config`。它覆盖三件事：
+
+- `bundle.active: true`、`targets: ["app", "dmg"]`：基础配置为 Windows 裸 exe 设为 `false`，这里在 macOS 上重新启用打包。
+- `bundle.macOS.signingIdentity: "-"`：Ad-hoc 签名。
+- `bundle.fileAssociations`：macOS 上双击 `.md` / `.markdown` / `.mdx` / `.txt` 用本应用打开。
+
+### 签名策略：Ad-hoc（免费，无 Apple Developer 账号）
+
+本项目**不购买 Apple Developer Program（99 美元/年）**，因此使用 **Ad-hoc 签名**（`signingIdentity: "-"`）。Ad-hoc 签名不依赖任何付费证书，也**没有 Apple 公证**，但它让 `.app` 拥有合法的 bundle 级代码密封，避免在 Apple Silicon 上被 Gatekeeper 误判为「已损坏」。
+
+首次打开仍可能出现「无法验证开发者」，但**不会出现「已损坏」**，按下方「macOS 首次打开被拦截的解决方案」放行即可，用户门槛远低于无签名包。
+
+### 构建流程
+
+1. 推送代码到 GitHub。
+2. 双击根目录 `build-macos.bat`。脚本会：
+   - 通过 `gh` 触发 `build-macos.yml`；
+   - 等待构建完成；
+   - 下载 `.dmg` artifact；
+   - 复制到 `D:\software\markdown looker\macOS`。
+3. 也可手动在仓库 **Actions → Build macOS (Ad-hoc signed DMG) → Run workflow** 触发，然后重新运行 `build-macos.bat` 或直接到 Actions 页面下载 artifact。
+
+前置：安装 [GitHub CLI](https://cli.github.com/) 并执行 `gh auth login`。
+
+### 为什么 CI 里要验证签名
+
+Tauri 在 `signingIdentity` 缺失时会**静默跳过** codesign 阶段，产出的 `.app` 没有 bundle 级密封，在 Apple Silicon 上会被 Gatekeeper 直接报「已损坏」，`xattr` 都无法恢复。`build-macos.yml` 中显式执行 `codesign --verify --strict`，签名不合法时 CI 立即失败，不会把坏包发出去。
+
+### macOS 首次打开被拦截的解决方案
+
+Ad-hoc 签名已消除「已损坏」错误。若仍提示「无法验证开发者」，任选一种：
+
+**方式一：右键打开（最简单）**
+1. Finder 中**右键点击** `Markdown Looker.app` → 打开。
+2. 弹窗中再点「打开」。
+3. 之后可正常双击启动。
+
+**方式二：系统设置放行**
+1. 双击应用 → 弹窗点「完成」。
+2. **系统设置 → 隐私与安全性** → 底部找到被拦截提示 → 点「仍要打开」。
+3. 输入密码确认。
+
+**方式三：终端去除隔离属性（备用）**
+```bash
+xattr -cr /Applications/Markdown\ Looker.app
+```
+仅在个别系统版本仍拦截时使用；Ad-hoc 签名正常时不需要这一步。提示「已损坏」但 App 实际完好时，也可用此命令修复。
+
+**方式四：临时关闭 Gatekeeper（不推荐）**
+```bash
+sudo spctl --master-disable
+```
+全局关闭应用来源检查，降低系统安全性，仅在清楚后果时使用。
 
 ## 代码高亮与额外语言
 
@@ -235,6 +327,8 @@ Shiki 高亮器内置了一张别名映射表，以下写法可直接识别为�
 | `Ctrl + S` | 保存当前标签 |
 | `Ctrl + Shift + S` | 另存为 |
 | `Esc` | 关闭 Mermaid 全屏 / 关闭保存确认弹窗 |
+
+> 除默认快捷键外，所有动作均可通过「设置 → 快捷键」重新绑定，支持多段序列（如 `Ctrl+K Ctrl+S`），并区分左右修饰键和小键盘主键。
 
 ## 致谢
 

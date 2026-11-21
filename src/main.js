@@ -1641,6 +1641,21 @@ if (isTauri) {
         if (mode) setViewMode(mode, { persist: false });
     });
 
+    // macOS Cmd+Q / 应用退出请求：Rust 侧 prevent_exit 后发来此事件，
+    // 复用窗口关闭的未保存确认流程；全部干净后调用 exit_app 真正退出。
+    listen('app-exit-requested', async () => {
+        if (closingInProgress) return;
+        closingInProgress = true;
+        try {
+            const canExit = await confirmCloseAllTabs();
+            if (canExit) {
+                await invoke('exit_app');
+            }
+        } finally {
+            closingInProgress = false;
+        }
+    });
+
     invoke('get_initial_file').then(fileData => {
         if (fileData && fileData.content) {
             const path = fileData.path || null;

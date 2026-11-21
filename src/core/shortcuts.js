@@ -12,6 +12,22 @@
 
 export const MOD_ORDER = ['Control', 'Shift', 'Alt', 'Meta'];
 
+// ---------- 平台检测 ----------
+/** 是否 macOS（决定默认快捷键用 Cmd 还是 Ctrl，以及修饰键显示名） */
+export const IS_MAC = typeof navigator !== 'undefined'
+    && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+/**
+ * macOS 下把默认值里的 ControlLeft/Right 映射为 MetaLeft/Right（Command 键），
+ * 使默认快捷键符合平台习惯（Cmd+O / Cmd+S）。用户自定义绑定不受影响。
+ */
+function platformDefault(str) {
+    if (!IS_MAC || !str) return str;
+    return str
+        .replaceAll('ControlLeft', 'MetaLeft')
+        .replaceAll('ControlRight', 'MetaRight');
+}
+
 // 动作元数据（顺序即设置面板显示顺序）
 export const ACTIONS = [
     // 文件
@@ -53,7 +69,7 @@ export const ACTIONS = [
 ];
 
 export const DEFAULT_SHORTCUTS = Object.fromEntries(
-    ACTIONS.map(a => [a.id, a.default])
+    ACTIONS.map(a => [a.id, platformDefault(a.default)])
 );
 
 export const FILE_ACTIONS = new Set(['open', 'save', 'saveAs', 'openSettings']);
@@ -157,12 +173,18 @@ for (let i = 1; i <= 12; i++) {
     KEY_NAMES['F' + i] = 'F' + i;
 }
 
-Object.assign(KEY_NAMES, {
+Object.assign(KEY_NAMES, IS_MAC ? {
+    // macOS：Meta = Command，Alt = Option，Control 就是字面 Control
+    MetaLeft: '左Cmd', MetaRight: '右Cmd',
+    ControlLeft: '左Control', ControlRight: '右Control',
+    AltLeft: '左Option', AltRight: '左Option',
+    ShiftLeft: '左Shift', ShiftRight: '右Shift',
+} : {
     ControlLeft: '左Ctrl', ControlRight: '右Ctrl',
     ShiftLeft: '左Shift', ShiftRight: '右Shift',
     AltLeft: '左Alt', AltRight: '右Alt',
     MetaLeft: '左Win', MetaRight: '右Win',
-
+}, {
     Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'",
     BracketLeft: '[', BracketRight: ']', Backslash: '\\', Backquote: '`',
     Minus: '-', Equal: '=',
