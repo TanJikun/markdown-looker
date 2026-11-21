@@ -1,9 +1,15 @@
 // =========================================================
-// 外观面板：主题三选一 + 设置窗口大小
+// 外观面板：主题三选一 + 渲染模式 + 设置窗口大小
 // =========================================================
 
 const MIN_RATIO_PERCENT = 40;
 const THUMB_WIDTH_PX = 16;
+
+const VIEW_MODES = [
+    { value: 'split', label: '双栏', hint: '左侧编辑，右侧预览' },
+    { value: 'preview', label: '预览', hint: '仅显示预览' },
+    { value: 'source', label: '源码', hint: '仅显示编辑器' },
+];
 
 const tauri = window.__TAURI__;
 const WebviewWindow = tauri?.webviewWindow?.WebviewWindow;
@@ -14,6 +20,7 @@ export const meta = { id: 'appearance', title: '外观' };
 
 let ctx;
 let currentTheme = 'system';
+let currentViewMode = 'split';
 let currentRatio = 80;
 let pendingRecenter = null;
 let previewRafId = null;
@@ -23,6 +30,7 @@ export async function mount(root, context) {
     ctx = context;
     const cfg = ctx.getConfig();
     currentTheme = ctx.VALID_THEMES.includes(cfg.theme) ? cfg.theme : 'system';
+    currentViewMode = VIEW_MODES.some(m => m.value === cfg.view_mode) ? cfg.view_mode : 'split';
     currentRatio = typeof cfg.settings_window_ratio === 'number'
         ? Math.max(MIN_RATIO_PERCENT, Math.min(100, Math.round(cfg.settings_window_ratio * 100)))
         : 80;
@@ -43,6 +51,25 @@ export async function mount(root, context) {
 
         <div class="settings-field">
             <div class="settings-field-label">
+                渲染模式
+                <span class="settings-hint">工具栏最右侧也能快速切换</span>
+            </div>
+            <div class="settings-field-control">
+                <div class="settings-radio-group">
+                    ${VIEW_MODES.map(m => `
+                        <label class="settings-radio-label">
+                            <input type="radio" name="view_mode" value="${m.value}"
+                                   ${m.value === currentViewMode ? 'checked' : ''}>
+                            ${m.label}
+                            <span class="settings-hint">${m.hint}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-field">
+            <div class="settings-field-label">
                 设置窗口大小
                 <span class="settings-hint">相对主窗口，拖动即时生效</span>
             </div>
@@ -55,6 +82,7 @@ export async function mount(root, context) {
 
     updateThemeUI();
     bindThemeButtons();
+    bindViewMode();
     bindRatio();
     await bindParentTracking();
     await recenterAndResize(currentRatio);
@@ -100,6 +128,25 @@ async function setTheme(theme) {
 function bindThemeButtons() {
     document.querySelectorAll('.theme-btn').forEach(btn => {
         btn.addEventListener('click', () => setTheme(btn.dataset.theme));
+    });
+}
+
+// ---------- 渲染模式 ----------
+function bindViewMode() {
+    document.querySelectorAll('input[name="view_mode"]').forEach(radio => {
+        radio.addEventListener('change', async (e) => {
+            const next = e.target.value;
+            if (!VIEW_MODES.some(m => m.value === next)) return;
+            currentViewMode = next;
+            await ctx.patchConfig({ view_mode: next });
+            if (ctx.emit) {
+                try {
+                    await ctx.emit('settings:view-mode-changed', { view_mode: next });
+                } catch (err) {
+                    console.warn('[appearance] emit view-mode-changed 失败:', err);
+                }
+            }
+        });
     });
 }
 
