@@ -81,15 +81,26 @@ impl Default for AppConfig {
     }
 }
 
-fn get_config_path() -> Result<PathBuf, String> {
-    let exe = env::current_exe().map_err(|e| format!("无法获取程序路径: {}", e))?;
-    let dir = exe.parent().ok_or_else(|| "无法获取程序所在目录".to_string())?;
-    Ok(dir.join("config.json"))
+/// 可写数据目录：Windows 保持 exe 同目录（既有行为），macOS 用 appDataDir（.app 内只读）。
+fn writable_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if cfg!(target_os = "macos") {
+        let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        fs::create_dir_all(&dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
+        Ok(dir)
+    } else {
+        let exe = env::current_exe().map_err(|e| format!("无法获取程序路径: {}", e))?;
+        let dir = exe.parent().ok_or_else(|| "无法获取程序所在目录".to_string())?;
+        Ok(dir.to_path_buf())
+    }
+}
+
+fn get_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(writable_data_dir(app)?.join("config.json"))
 }
 
 #[tauri::command]
-fn load_config() -> Result<AppConfig, String> {
-    let path = get_config_path()?;
+fn load_config(app: tauri::AppHandle) -> Result<AppConfig, String> {
+    let path = get_config_path(&app)?;
     if !path.exists() {
         return Ok(AppConfig::default());
     }
@@ -98,8 +109,8 @@ fn load_config() -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
-fn save_config(config: AppConfig) -> Result<(), String> {
-    let path = get_config_path()?;
+fn save_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
+    let path = get_config_path(&app)?;
     let content =
         serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
     fs::write(&path, content).map_err(|e| format!("写入配置失败: {}", e))
@@ -107,7 +118,8 @@ fn save_config(config: AppConfig) -> Result<(), String> {
 
 // ==================== PicNexus 路径与通用文件夹检测 ====================
 
-/// 把用户输入或环境变量里的值，解析成真实的 PicNexus.exe 路径。
+/// 把用户输入或环境变量里的值，解析成真实的 PicNexus 可执行文件路径。
+/// Windows 认 PicNexus.exe；macOS/Linux 认无扩展名的 picnexus。
 fn resolve_picnexus_path(raw: &str) -> Option<String> {
     let p = Path::new(raw.trim());
     if !p.exists() {
@@ -115,12 +127,16 @@ fn resolve_picnexus_path(raw: &str) -> Option<String> {
     }
 
     if p.is_file() {
-        let is_exe = p
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.eq_ignore_ascii_case("exe"))
-            .unwrap_or(false);
-        return if is_exe {
+        let is_executable = if cfg!(windows) {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("exe"))
+                .unwrap_or(false)
+        } else {
+            // Unix 上可执行文件通常无扩展名，执行失败由 Command::new 自然报错
+            true
+        };
+        return if is_executable {
             Some(p.to_string_lossy().to_string())
         } else {
             None
@@ -128,6 +144,7 @@ fn resolve_picnexus_path(raw: &str) -> Option<String> {
     }
 
     if p.is_dir() {
+        let want = if cfg!(windows) { "picnexus.exe" } else { "picnexus" };
         if let Ok(entries) = fs::read_dir(p) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -135,7 +152,7 @@ fn resolve_picnexus_path(raw: &str) -> Option<String> {
                     continue;
                 }
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.eq_ignore_ascii_case("picnexus.exe") {
+                    if name.eq_ignore_ascii_case(want) {
                         return Some(path.to_string_lossy().to_string());
                     }
                 }
@@ -188,12 +205,8 @@ const MAX_LOGS: usize = 10;
 
 struct LogState(Mutex<Option<PathBuf>>);
 
-fn log_dir() -> Result<PathBuf, String> {
-    let exe = env::current_exe().map_err(|e| format!("无法获取程序路径: {}", e))?;
-    let dir = exe
-        .parent()
-        .ok_or_else(|| "无法获取程序所在目录".to_string())?
-        .join("logs");
+fn log_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = writable_data_dir(app)?.join("logs");
     fs::create_dir_all(&dir).map_err(|e| format!("创建日志目录失败: {}", e))?;
     Ok(dir)
 }
@@ -234,8 +247,8 @@ fn cleanup_old_logs(dir: &PathBuf) {
     }
 }
 
-fn init_log() -> Result<PathBuf, String> {
-    let dir = log_dir()?;
+fn init_log(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = log_dir(app)?;
     let log_path = create_new_log(&dir)?;
     cleanup_old_logs(&dir);
     Ok(log_path)
@@ -355,12 +368,24 @@ pub fn run() {
         }))
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                if let Some(icon) = app.default_window_icon() {
-                    let _ = window.set_icon(icon.clone());
+                // set_icon 仅 Windows/Linux 支持，macOS 返回 Err，故按平台门控
+                if !cfg!(target_os = "macos") {
+                    if let Some(icon) = app.default_window_icon() {
+                        let _ = window.set_icon(icon.clone());
+                    }
                 }
             }
 
-            match init_log() {
+            // macOS：.app 容器只读，额外语言的 langs/ 放用户数据目录，启动时确保存在
+            if cfg!(target_os = "macos") {
+                if let Ok(dir) = app.path().app_data_dir() {
+                    if let Err(e) = fs::create_dir_all(dir.join("langs")) {
+                        eprintln!("[grammar] 创建 langs 目录失败: {}", e);
+                    }
+                }
+            }
+
+            match init_log(app.handle()) {
                 Ok(path) => {
                     eprintln!("[log] 日志文件: {}", path.display());
                     app.manage(LogState(Mutex::new(Some(path))));
@@ -388,10 +413,41 @@ pub fn run() {
             validate_picnexus_path,
             pick_picnexus_path,
             pick_folder,
-            save_or_upload_image
+            save_or_upload_image,
+            exit_app
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| match event {
+            // Cmd+Q / 菜单退出（code 为 None 的用户退出）：拦截后交给前端未保存确认流程。
+            // code = Some(_) 来自 exit_app 的 app.exit(0)，放行。
+            tauri::RunEvent::ExitRequested { code: None, api, .. } => {
+                api.prevent_exit();
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("app-exit-requested", ());
+                }
+            }
+            // macOS：Finder 双击文件 / 拖到 Dock 图标。argv 为空，只能走这里。
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                if let Some(window) = app.get_webview_window("main") {
+                    for url in urls {
+                        let Ok(path) = url.to_file_path() else { continue };
+                        let p = path.to_string_lossy().to_string();
+                        if p.ends_with(".md") || p.ends_with(".markdown") || p.ends_with(".txt") {
+                            let _ = window.emit("new-file-opened", p);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        });
+}
+
+/// 前端确认未保存标签后调用，真正退出应用。
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 // ==================== 图片保存与上传 ====================

@@ -26,12 +26,15 @@ export function isScrollAnchorElement(el) {
     return !el.closest('details:not([open])');
 }
 
+/** @typedef {{ line: number, previewTop: number, editorTop: number, el?: Element|null }} Anchor */
+
 /**
  * Enforce monotonic non-decreasing positions for an anchor coordinate, so
  * segment interpolation can never produce a backwards jump ("halt then jump")
  * when a few source-line annotations resolve out of order. (Issue #39)
- * @param {{[key:string]:number}[]} anchors
- * @param {string} key
+ * @param {Anchor[]} anchors
+ * @param {'editorTop'|'previewTop'} key
+ * @returns {Anchor[]}
  */
 export function clampMonotonic(anchors, key) {
     if (!anchors || !anchors.length) return anchors;
@@ -50,9 +53,9 @@ export function clampMonotonic(anchors, key) {
  * Locate the [a, b] segment bracketing `value` on `key` and the local progress.
  * Pure + testable. (Issue #39)
  * @param {number} value
- * @param {string} key - 'editorTop' | 'previewTop'
- * @param {{[key:string]:number}[]} anchors
- * @returns {{ a: any, b: any, t: number }|null}
+ * @param {'editorTop'|'previewTop'} key
+ * @param {Anchor[]} anchors
+ * @returns {{ a: Anchor, b: Anchor, t: number }|null}
  */
 export function findAnchorSegment(value, key, anchors = []) {
     if (!anchors.length) return null;

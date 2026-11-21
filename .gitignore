@@ -1,11 +1,23 @@
 # 忽略 Tauri 编译产生的巨大缓存文件夹
 /src-tauri/target/
 
-# 忽略 Node.js 依赖和系统文件
+# 忽略 Node.js 依赖文件夹
 /node_modules/
+
+# 忽略前端构建打包产物
+/dist/
+
+# 忽略本地 IDE 缓存和临时分享包
+/.trae-html-share-packages/
+
+# 忽略本地生成的截图文件夹和文件树记录
+/.screenshots/
+/tree.txt
+
+# 忽略系统自动生成的文件
 .DS_Store
 Thumbs.db
 
-# 忽略 VSCode 等编辑器配置
-.vscode/
-.idea/
+# 忽略本地环境变量文件（防止意外泄露密钥，虽然现在没用到但建议保留）
+.env
+.env.local

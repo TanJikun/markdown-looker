@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "checkJs": true,
+        "strict": false,
+        "noEmit": true,
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "target": "ES2022",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    },
+    // 渐进迁移：先只覆盖纯逻辑核心模块。main.js 等入口待补齐类型后再加入。
+    "include": [
+        "src/core/scroll-sync.js",
+        "src/core/source-lines.js",
+        "src/core/shiki-highlighter.js"
+    ]
+}

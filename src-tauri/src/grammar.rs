@@ -23,12 +23,17 @@ pub fn read_lang_grammar(app: tauri::AppHandle, lang: String) -> Result<String, 
 
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    // 1) Tauri 的资源目录（Windows/Linux 下通常就是 exe 目录）
+    // 0) 用户数据目录（macOS 首选：.app 容器只读，用户可自行放入语法文件）
+    if let Ok(dir) = app.path().app_data_dir() {
+        candidates.push(dir.join("langs").join(&file_name));
+    }
+
+    // 1) Tauri 的资源目录（Windows/Linux 下通常就是 exe 目录；macOS 为 Contents/Resources）
     if let Ok(dir) = app.path().resource_dir() {
         candidates.push(dir.join("langs").join(&file_name));
     }
 
-    // 2) fallback: 当前可执行文件所在目录
+    // 2) fallback: 当前可执行文件所在目录（Windows 裸 exe 行为）
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             candidates.push(exe_dir.join("langs").join(&file_name));

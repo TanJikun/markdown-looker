@@ -50,12 +50,13 @@ const LANG_ALIAS = {
 /** 正在进行中的语言加载，避免同一语言并发重复读取 */
 const pendingLangLoads = new Map();
 
+/** @type {import('shiki/core').HighlighterCore|null} */
 let highlighter = null;
 let initPromise = null;
 
 /**
  * 初始化高亮器（只初始化一次）。
- * 返回的 Promise 在初始化完成后 resolve，任何失败都会 reject。
+ * @returns {Promise<import('shiki/core').HighlighterCore>}
  */
 export function initShiki() {
     if (initPromise) return initPromise;
@@ -79,7 +80,8 @@ export function isShikiReady() {
 
 /**
  * 解析 Markdown 代码块的 info string 为 Shiki 语言名。
- * 支持 “js”, “c++”, “py” 等别名。
+ * @param {string} rawLang
+ * @returns {string}
  */
 export function resolveLang(rawLang) {
     const l = String(rawLang || '').trim().toLowerCase();
@@ -131,10 +133,12 @@ async function ensureLanguage(lang) {
  * 文件不存在 / JSON 解析失败 / 非 Tauri 环境 → 返回 null。
  */
 async function loadExternalGrammar(lang) {
-    if (typeof window === 'undefined' || !window.__TAURI__) return null;
+    // withGlobalTauri 注入的全局对象，无内置类型，局部 cast
+    const w = /** @type {any} */ (typeof window === 'undefined' ? undefined : window);
+    if (!w?.__TAURI__) return null;
 
     try {
-        const { invoke } = window.__TAURI__.core;
+        const { invoke } = w.__TAURI__.core;
         const text = await invoke('read_lang_grammar', { lang });
 
         if (!text || typeof text !== 'string') return null;
@@ -152,8 +156,9 @@ async function loadExternalGrammar(lang) {
 
 /**
  * 对单个代码块做高亮。
- * 返回 Shiki 生成的完整 <pre>...</pre> HTML；
- * 语言不可用、纯文本、或出错时返回 null。
+ * @param {string} code
+ * @param {string} rawLang
+ * @returns {Promise<string|null>} Shiki 生成的 <pre> HTML；语言不可用/纯文本/出错时 null
  */
 export async function highlightCodeBlock(code, rawLang) {
     const h = highlighter;

@@ -1,0 +1,51 @@
+name: Build macOS (Ad-hoc signed DMG)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      - name: Ensure icns icon exists
+        run: |
+          if [ ! -f src-tauri/icons/icon.icns ]; then
+            echo "icon.icns 缺失，使用 icon.svg 生成全套图标..."
+            npx tauri icon src-tauri/icons/icon.svg
+          fi
+
+      - name: Build Universal macOS .dmg (Ad-hoc signed)
+        run: npm run tauri build -- --target universal-apple-darwin
+
+      - name: Verify Ad-hoc signature on .app
+        run: |
+          APP_PATH=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name "*.app" | head -n 1)
+          echo "Verifying: $APP_PATH"
+          codesign --verify --strict --verbose=2 "$APP_PATH"
+          echo "✅ Ad-hoc signature valid"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: markdown-looker-macos-adhoc
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
