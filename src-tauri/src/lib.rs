@@ -422,8 +422,12 @@ pub fn run() {
             // Cmd+Q / 菜单退出（code 为 None 的用户退出）：拦截后交给前端未保存确认流程。
             // code = Some(_) 来自 exit_app 的 app.exit(0)，放行。
             tauri::RunEvent::ExitRequested { code: None, api, .. } => {
-                api.prevent_exit();
+                // 仅当主窗口仍存在（macOS Cmd+Q / 菜单退出）时才拦截；
+                // 窗口已销毁（Windows/Linux 点 X 后前端已确认并 destroy）时必须放行，
+                // 否则 prevent_exit 会留下无窗口的僵尸进程，且 emit 无处可送，
+                // 下次启动被单实例插件转发给僵尸进程，表现为软件无法再次打开。
                 if let Some(window) = app.get_webview_window("main") {
+                    api.prevent_exit();
                     let _ = window.emit("app-exit-requested", ());
                 }
             }
