@@ -1,79 +1,75 @@
 @echo off
-chcp 65001 >nul
-title Markdown Looker 一键编译
+chcp 936 >nul
+title Markdown Looker һ������
 
 cd /d "%~dp0"
 
 echo ===================================================
-echo 正在准备编译 Markdown Looker...
-echo 提示：由于之前已经编译过依赖，本次编译预计只需几秒到十几秒。
+echo ����׼������ Markdown Looker...
+echo ��ʾ������֮ǰ�Ѿ���������������α���Ԥ��ֻ�輸�뵽ʮ���롣
 echo ===================================================
 echo.
 
-:: 结束可能占用 markdown-looker.exe 的残留进程
-echo [信息] 正在检查并尝试结束残留的 markdown-looker.exe 进程...
+echo [��Ϣ] ���ڼ�鲢���Խ��������� markdown-looker.exe ����...
 taskkill /F /IM markdown-looker.exe >nul 2>nul
 echo.
 
-:: 执行 Tauri 编译命令
 call tauri build
-
 if errorlevel 1 goto BUILD_ERROR
 
-:: ===================================================
-:: 编译成功：复制 exe 到目标目录
-:: ===================================================
 set "SRC_EXE=%~dp0src-tauri\target\release\markdown-looker.exe"
 set "DEST_DIR=D:\software\markdown looker"
 set "DEST_EXE=%DEST_DIR%\markdown-looker.exe"
 
 echo.
 echo ===================================================
-echo [信息] 开始复制 exe 到目标目录...
-echo 源文件: %SRC_EXE%
-echo 目标目录: %DEST_DIR%
+echo [��Ϣ] ��ʼ���� exe ��Ŀ��Ŀ¼...
+echo Դ�ļ�: %SRC_EXE%
+echo Ŀ��Ŀ¼: %DEST_DIR%
 echo ===================================================
 
-if not exist "%SRC_EXE%" (
-    echo.
-    echo [警告] 未找到编译输出：%SRC_EXE%
-    echo 请检查是否编译成功（bundle.active 应为 false，产物在 target\release 下）。
-    goto COPY_END
-)
+if not exist "%SRC_EXE%" goto NO_SRC_EXE
+if not exist "%DEST_DIR%" goto MAKE_DEST_DIR
+goto COPY_FILE
 
-if not exist "%DEST_DIR%" (
-    echo [信息] 目标目录不存在，正在创建...
-    mkdir "%DEST_DIR%" >nul 2>nul
-    if not exist "%DEST_DIR%" (
-        echo.
-        echo [错误] 无法创建目标目录：%DEST_DIR%
-        echo 请检查权限或磁盘是否存在。
-        goto COPY_END
-    )
-)
+:MAKE_DEST_DIR
+echo [��Ϣ] Ŀ��Ŀ¼�����ڣ����ڴ���...
+mkdir "%DEST_DIR%" >nul 2>nul
+if not exist "%DEST_DIR%" goto MAKE_DIR_FAIL
 
-:: 复制前结束目标目录可能正在运行的旧进程
+:COPY_FILE
 taskkill /F /IM markdown-looker.exe >nul 2>nul
-
-if exist "%DEST_EXE%" (
-    del /F /Q "%DEST_EXE%" >nul 2>nul
-)
+if exist "%DEST_EXE%" del /F /Q "%DEST_EXE%" >nul 2>nul
 
 copy /Y "%SRC_EXE%" "%DEST_EXE%" >nul
-if errorlevel 1 (
-    echo.
-    echo [错误] 复制失败！
-    echo 可能原因：目标 exe 正在运行，或没有写入权限。
-    echo 请关闭 %DEST_EXE% 后重试。
-    goto COPY_END
-)
+if errorlevel 1 goto COPY_FAIL
 
-echo [成功] 已复制到：%DEST_EXE%
+echo [�ɹ�] �Ѹ��Ƶ���%DEST_EXE%
+goto COPY_END
+
+:NO_SRC_EXE
+echo.
+echo [����] δ�ҵ����������%SRC_EXE%
+echo �����Ƿ����ɹ���
+goto COPY_END
+
+:MAKE_DIR_FAIL
+echo.
+echo [����] �޷�����Ŀ��Ŀ¼��%DEST_DIR%
+echo ����Ȩ�޻�����Ƿ���ڡ�
+goto COPY_END
+
+:COPY_FAIL
+echo.
+echo [����] ����ʧ�ܣ�
+echo ����ԭ��Ŀ�� exe �������У���û��д��Ȩ�ޡ�
+echo ��ر� %DEST_EXE% �����ԡ�
+goto COPY_END
 
 :COPY_END
 echo.
 echo ===================================================
-echo [成功] 编译完成！
+echo [�ɹ�] ������ɣ�
 echo ===================================================
 echo.
 pause
@@ -82,8 +78,8 @@ exit /b 0
 :BUILD_ERROR
 echo.
 echo ===================================================
-echo [错误] 编译失败！
-echo 请检查上方是否有红色的报错信息。
+echo [����] ����ʧ�ܣ�
+echo �����Ϸ��Ƿ��к�ɫ�ı�����Ϣ��
 echo ===================================================
 pause
 exit /b 1
