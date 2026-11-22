@@ -125,7 +125,7 @@ langs/
 
 ### 环境准备
 请确保你已安装：
-1. [Node.js](https://nodejs.org/) (推荐 v18+)
+1. [Node.js](https://nodejs.org/) (推荐 v24+)
 2. [Rust](https://www.rust-lang.org/tools/install) (通过 rustup 安装)
 3. [Tauri CLI](https://tauri.app/v1/guides/getting-started/prerequisites)
 
